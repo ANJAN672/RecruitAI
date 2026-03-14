@@ -533,6 +533,23 @@ app.get("/api/candidates/:id/reports", requireAuth, async (req: any, res) => {
 
 // ── Market Intelligence ───────────────────────────────────────────────
 
+app.get("/api/jobs/:id/market-intelligence", requireAuth, async (req: any, res) => {
+  const { data: job } = await supabase.from("jobs").select("id").eq("id", req.params.id).eq("user_id", req.user.id).single();
+  if (!job) return res.status(404).json({ error: "Job not found" });
+
+  const { data: cached } = await supabase
+    .from("market_intelligence")
+    .select("data")
+    .eq("job_id", req.params.id)
+    .eq("user_id", req.user.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!cached?.data) return res.json({ found: false });
+  return res.json({ found: true, ...cached.data });
+});
+
 app.post("/api/jobs/:id/market-intelligence", requireAuth, async (req: any, res) => {
   try {
     const { data: job, error } = await supabase.from("jobs").select("*").eq("id", req.params.id).eq("user_id", req.user.id).single();
@@ -596,6 +613,12 @@ Each entry must be a real institution with a real URL. Focus on institutions tha
 
     let parsed: any = {};
     try { parsed = JSON.parse(rawContent); } catch { throw new Error("Invalid JSON"); }
+
+    await supabase.from("market_intelligence").insert({
+      job_id: parseInt(req.params.id),
+      user_id: req.user.id,
+      data: parsed,
+    });
 
     res.json({ found: true, ...parsed });
   } catch (err) {

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pkill -f \"tsx.*server\")",
+      "Bash(pkill -f \"ts-node.*server\")",
+      "Bash(pkill -f \"node.*server\")",
+      "Bash(lsof -ti:3000)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(pkill -f \"tsx\")",
+      "Read(//tmp/**)",
+      "Bash(npm run:*)",
+      "Bash(npx vercel:*)"
+    ]
+  }
+}
