@@ -210,8 +210,8 @@ GOOGLE X-RAY SEARCHES (for finding profiles/resumes via Google):
 8. xray_naukri: site:naukri.com then role + 1-2 skills in quotes. Do NOT use /profile.
 9. xray_indeed: site:indeed.com/r then role + 1-2 skills in quotes.
 10. xray_dice: site:dice.com then role + 1-2 skills in quotes.
-11. xray_careerbuilder: site:careerbuilder.com/resume then role + 1-2 skills in quotes.
-12. xray_monster: site:monster.com/resume then role + 1-2 skills in quotes.`,
+11. xray_careerbuilder: site:careerbuilder.com then role + 1-2 skills in quotes. Do NOT use /resume path.
+12. xray_monster: site:monster.com then role + 1-2 skills in quotes. Do NOT use /resume path.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -366,7 +366,7 @@ Generate exactly 4 concepts and 4 interview questions. Every expected_answer MUS
 app.post("/api/jobs/:id/candidates", requireAuth, async (req: any, res) => {
   try {
     const jobId = req.params.id;
-    const { name, profile_url, profile_text } = req.body;
+    const { name, profile_url, twitter_url, profile_text } = req.body;
 
     if (!name || !profile_text) {
       return res.status(400).json({ error: "Name and profile text are required" });
@@ -383,7 +383,7 @@ app.post("/api/jobs/:id/candidates", requireAuth, async (req: any, res) => {
 
     const response = await getAI().models.generateContent({
       model: MODEL,
-      contents: `Analyze this candidate profile against the job requirements and score the match.
+      contents: `Analyze this candidate profile against the job requirements. Provide both a technical match assessment AND a behavioral/cultural analysis.
 
 Job Requirements:
 - Role: ${job.role}
@@ -394,7 +394,8 @@ Job Requirements:
 Candidate Profile:
 ${profile_text}
 
-Extract the candidate's skills, summarize their experience, score the match from 0-100, and give a concise 1-2 sentence reasoning for the score.`,
+1. Extract skills, summarize experience, score match 0-100, and give 1-2 sentence reasoning.
+2. Write a behavioral_summary: Analyze communication style, leadership indicators, collaboration signals, career trajectory, red flags, and cultural fit signals visible in the profile text. 3-5 sentences.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -404,8 +405,9 @@ Extract the candidate's skills, summarize their experience, score the match from
             experience: { type: Type.STRING },
             match_score: { type: Type.INTEGER },
             match_reasoning: { type: Type.STRING },
+            behavioral_summary: { type: Type.STRING },
           },
-          required: ["skills", "experience", "match_score", "match_reasoning"],
+          required: ["skills", "experience", "match_score", "match_reasoning", "behavioral_summary"],
         },
       },
     });
@@ -418,11 +420,13 @@ Extract the candidate's skills, summarize their experience, score the match from
         job_id: parseInt(jobId),
         name,
         profile_url: profile_url || "",
+        twitter_url: twitter_url || "",
         profile_text,
         skills: JSON.stringify(parsed.skills || []),
         experience: parsed.experience || "",
         match_score: parsed.match_score || 0,
         match_reasoning: parsed.match_reasoning || "",
+        behavioral_summary: parsed.behavioral_summary || "",
       })
       .select()
       .single();

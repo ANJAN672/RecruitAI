@@ -38,11 +38,13 @@ interface Candidate {
   job_id: number;
   name: string;
   profile_url: string;
+  twitter_url: string;
   profile_text: string;
   skills: string;
   experience: string;
   match_score: number;
   match_reasoning: string;
+  behavioral_summary: string;
   created_at: string;
 }
 
@@ -1016,6 +1018,7 @@ function JobDetails() {
   const [isAddingCandidate, setIsAddingCandidate] = React.useState(false);
   const [candidateName, setCandidateName] = React.useState('');
   const [candidateUrl, setCandidateUrl] = React.useState('');
+  const [candidateTwitter, setCandidateTwitter] = React.useState('');
   const [candidateProfile, setCandidateProfile] = React.useState('');
   const [isIngesting, setIsIngesting] = React.useState(false);
   const [ingestError, setIngestError] = React.useState('');
@@ -1084,13 +1087,13 @@ function JobDetails() {
     try {
       const res = await api(`/api/jobs/${id}/candidates`, {
         method: 'POST',
-        body: JSON.stringify({ name: candidateName, profile_url: candidateUrl, profile_text: candidateProfile }),
+        body: JSON.stringify({ name: candidateName, profile_url: candidateUrl, twitter_url: candidateTwitter, profile_text: candidateProfile }),
       });
       const data = await res.json();
       if (!res.ok) { setIngestError(data.error || 'Failed to ingest candidate.'); return; }
       setCandidates(prev => [...prev, data].sort((a, b) => b.match_score - a.match_score));
       setIsAddingCandidate(false);
-      setCandidateName(''); setCandidateUrl(''); setCandidateProfile('');
+      setCandidateName(''); setCandidateUrl(''); setCandidateTwitter(''); setCandidateProfile('');
     } catch {
       setIngestError('Network error. Please try again.');
     } finally {
@@ -1186,6 +1189,10 @@ function JobDetails() {
                             <label className="block text-sm font-medium text-neutral-700 mb-1.5">LinkedIn URL <span className="text-neutral-400">(optional)</span></label>
                             <input type="url" value={candidateUrl} onChange={e => setCandidateUrl(e.target.value)} className="input-field" placeholder="https://linkedin.com/in/..." />
                           </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-700 mb-1.5">X / Twitter URL <span className="text-neutral-400">(optional)</span></label>
+                          <input type="url" value={candidateTwitter} onChange={e => setCandidateTwitter(e.target.value)} className="input-field" placeholder="https://x.com/username" />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-neutral-700 mb-1.5">Resume / Profile Text *</label>
@@ -1414,11 +1421,10 @@ function CandidateDetails() {
   const skills = parseJSON<string[]>(candidate.skills, []);
   const scoreColor = candidate.match_score >= 80 ? 'badge-green' : candidate.match_score >= 60 ? 'badge-yellow' : 'badge-red';
 
-  // Extract social links from profile_text and profile_url
+  // Extract social links from DB fields and profile_text fallback
   const profileText = candidate.profile_text || '';
   const linkedinUrl = candidate.profile_url || (profileText.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[\w-]+/)?.[0]) || null;
-  const twitterUrl = profileText.match(/https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[\w]+/)?.[0] || null;
-  const instagramUrl = profileText.match(/https?:\/\/(?:www\.)?instagram\.com\/[\w.]+/)?.[0] || null;
+  const twitterUrl = candidate.twitter_url || profileText.match(/https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[\w]+/)?.[0] || null;
   const twitterHandle = profileText.match(/(?<![a-zA-Z0-9])@([\w]+)(?=\s|$)/)?.[1] || null;
 
   return (
@@ -1560,78 +1566,80 @@ function CandidateDetails() {
           )}
 
           {activeTab === 'behavioral' && (
-            <div className="grid lg:grid-cols-2 gap-6">
-              {/* Social Links */}
-              <div className="glass-card p-6">
-                <h4 className="font-medium text-neutral-900 mb-5 flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-blue-500" />
-                  Social Profiles
-                </h4>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3.5 bg-neutral-50 rounded-xl border border-neutral-100">
-                    <div className="flex items-center gap-2.5">
-                      <Linkedin className="w-4 h-4 text-blue-600" />
-                      <span className="text-sm font-medium text-neutral-700">LinkedIn</span>
-                    </div>
-                    {linkedinUrl ? (
-                      <button onClick={() => window.open(linkedinUrl, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
-                        View Profile <ExternalLink className="w-3 h-3" />
-                      </button>
-                    ) : (
-                      <span className="text-xs text-neutral-400">Not found in profile</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between p-3.5 bg-neutral-50 rounded-xl border border-neutral-100">
-                    <div className="flex items-center gap-2.5">
-                      <Twitter className="w-4 h-4 text-sky-500" />
-                      <span className="text-sm font-medium text-neutral-700">X / Twitter</span>
-                    </div>
-                    {twitterUrl ? (
-                      <button onClick={() => window.open(twitterUrl, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
-                        View Profile <ExternalLink className="w-3 h-3" />
-                      </button>
-                    ) : twitterHandle ? (
-                      <button onClick={() => window.open(`https://x.com/${twitterHandle}`, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
-                        @{twitterHandle} <ExternalLink className="w-3 h-3" />
-                      </button>
-                    ) : (
-                      <span className="text-xs text-neutral-400">Not found in profile</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between p-3.5 bg-neutral-50 rounded-xl border border-neutral-100">
-                    <div className="flex items-center gap-2.5">
-                      <Heart className="w-4 h-4 text-pink-500" />
-                      <span className="text-sm font-medium text-neutral-700">Instagram</span>
-                    </div>
-                    {instagramUrl ? (
-                      <button onClick={() => window.open(instagramUrl, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
-                        View Profile <ExternalLink className="w-3 h-3" />
-                      </button>
-                    ) : (
-                      <span className="text-xs text-neutral-400">Not found in profile</span>
-                    )}
-                  </div>
+            <div className="space-y-6">
+              {/* AI Behavioral Summary */}
+              {candidate.behavioral_summary && (
+                <div className="glass-card p-6">
+                  <h4 className="font-medium text-neutral-900 mb-3 flex items-center gap-2">
+                    <BrainCircuit className="h-4 w-4 text-purple-500" />
+                    AI Behavioral Analysis
+                  </h4>
+                  <p className="text-sm text-neutral-700 leading-relaxed bg-purple-50/50 border border-purple-100/50 rounded-2xl px-4 py-3">
+                    {candidate.behavioral_summary}
+                  </p>
                 </div>
-                <p className="text-xs text-neutral-400 mt-3">Links extracted from profile text. Add them manually in the profile if missing.</p>
-              </div>
+              )}
 
-              {/* Cultural Fit Notes */}
-              <div className="glass-card p-6">
-                <h4 className="font-medium text-neutral-900 mb-5 flex items-center gap-2">
-                  <Heart className="h-4 w-4 text-pink-500" />
-                  Cultural Fit & Behavioral Notes
-                </h4>
-                <textarea
-                  rows={8}
-                  value={behavioralNotes}
-                  onChange={e => { setBehavioralNotes(e.target.value); setNotesSaved(false); }}
-                  className="input-field resize-none mb-4"
-                  placeholder="Notes on cultural fit, communication style, team dynamics, enthusiasm, red flags, etc..."
-                />
-                <button onClick={saveBehavioralNotes} className="btn-primary w-full">
-                  {notesSaved ? <><Check className="mr-2 h-4 w-4" />Saved!</> : 'Save Notes'}
-                </button>
-                <p className="text-xs text-neutral-400 mt-2 text-center">Saved locally to this browser.</p>
+              <div className="grid lg:grid-cols-2 gap-6">
+                {/* Social Links */}
+                <div className="glass-card p-6">
+                  <h4 className="font-medium text-neutral-900 mb-5 flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-blue-500" />
+                    Social Profiles
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3.5 bg-neutral-50 rounded-xl border border-neutral-100">
+                      <div className="flex items-center gap-2.5">
+                        <Linkedin className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-medium text-neutral-700">LinkedIn</span>
+                      </div>
+                      {linkedinUrl ? (
+                        <button onClick={() => window.open(linkedinUrl, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                          View Profile <ExternalLink className="w-3 h-3" />
+                        </button>
+                      ) : (
+                        <span className="text-xs text-neutral-400">Not provided</span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between p-3.5 bg-neutral-50 rounded-xl border border-neutral-100">
+                      <div className="flex items-center gap-2.5">
+                        <Twitter className="w-4 h-4 text-sky-500" />
+                        <span className="text-sm font-medium text-neutral-700">X / Twitter</span>
+                      </div>
+                      {twitterUrl ? (
+                        <button onClick={() => window.open(twitterUrl, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                          View Profile <ExternalLink className="w-3 h-3" />
+                        </button>
+                      ) : twitterHandle ? (
+                        <button onClick={() => window.open(`https://x.com/${twitterHandle}`, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                          @{twitterHandle} <ExternalLink className="w-3 h-3" />
+                        </button>
+                      ) : (
+                        <span className="text-xs text-neutral-400">Not provided</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-3">Add LinkedIn / X URLs when ingesting candidates for quick access.</p>
+                </div>
+
+                {/* Cultural Fit Notes */}
+                <div className="glass-card p-6">
+                  <h4 className="font-medium text-neutral-900 mb-5 flex items-center gap-2">
+                    <Heart className="h-4 w-4 text-pink-500" />
+                    Your Notes
+                  </h4>
+                  <textarea
+                    rows={6}
+                    value={behavioralNotes}
+                    onChange={e => { setBehavioralNotes(e.target.value); setNotesSaved(false); }}
+                    className="input-field resize-none mb-4"
+                    placeholder="Notes on cultural fit, communication style, team dynamics, enthusiasm, red flags, etc..."
+                  />
+                  <button onClick={saveBehavioralNotes} className="btn-primary w-full">
+                    {notesSaved ? <><Check className="mr-2 h-4 w-4" />Saved!</> : 'Save Notes'}
+                  </button>
+                  <p className="text-xs text-neutral-400 mt-2 text-center">Saved locally to this browser.</p>
+                </div>
               </div>
             </div>
           )}
