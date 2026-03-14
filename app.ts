@@ -42,16 +42,16 @@ function buildSearchResponse(q: any) {
     found: true,
     linkedin_boolean: q.linkedin_boolean,
     naukri_keywords: q.naukri_keywords,
+    indeed_boolean: q.indeed_boolean || "",
+    dice_boolean: q.dice_boolean || "",
+    careerbuilder_boolean: q.careerbuilder_boolean || "",
+    monster_boolean: q.monster_boolean || "",
     xray_linkedin: q.xray_linkedin,
     xray_naukri: q.xray_naukri,
     xray_indeed: q.xray_indeed || "",
     xray_dice: q.xray_dice || "",
     xray_careerbuilder: q.xray_careerbuilder || "",
     xray_monster: q.xray_monster || "",
-    linkedin_search_url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(q.linkedin_boolean)}`,
-    naukri_search_url: `https://resdex.naukri.com/recruiter/search/profiles?q=${encodeURIComponent(q.naukri_keywords)}`,
-    google_xray_linkedin_url: `https://www.google.com/search?q=${encodeURIComponent(q.xray_linkedin)}`,
-    google_xray_naukri_url: `https://www.google.com/search?q=${encodeURIComponent(q.xray_naukri)}`,
   };
 }
 
@@ -181,23 +181,23 @@ Job Details:
 - Key Skills: ${hardSkills.slice(0, 6).join(", ")}
 - Experience Required: ${job.experience}
 
-Generate optimized candidate search queries. Return JSON with these 8 fields:
+Generate optimized candidate search queries. Return JSON with these 12 fields:
 
-1. linkedin_boolean: A SIMPLE and EFFECTIVE boolean for LinkedIn People Search. MAXIMUM 2 AND groups. Format: (role synonyms OR ...) AND (1-2 top skills OR ...). Keep short so LinkedIn returns results. Example: ("React Developer" OR "Frontend Engineer") AND ("React" OR "TypeScript")
+DIRECT PLATFORM BOOLEAN SEARCHES (for searching directly on each platform):
+1. linkedin_boolean: LinkedIn People Search boolean. MAXIMUM 2 AND groups. Example: ("React Developer" OR "Frontend Engineer") AND ("React" OR "TypeScript")
+2. naukri_keywords: Simple space-separated keywords for Naukri ResdEx. Job title + 3-4 skills. No operators.
+3. indeed_boolean: Indeed job search boolean. Same format as linkedin_boolean. MAXIMUM 2 AND groups.
+4. dice_boolean: Dice.com search boolean. Same format as linkedin_boolean. MAXIMUM 2 AND groups.
+5. careerbuilder_boolean: CareerBuilder search boolean. Same format as linkedin_boolean. MAXIMUM 2 AND groups.
+6. monster_boolean: Monster.com search boolean. Same format as linkedin_boolean. MAXIMUM 2 AND groups.
 
-2. naukri_keywords: Simple space-separated keywords for Naukri ResdEx. Job title + 3-4 key skills. No operators. Example: DevOps Engineer Docker Kubernetes AWS Terraform
-
-3. xray_linkedin: Google X-ray for LinkedIn. Start with: site:linkedin.com/in then role + 2 skills. Keep short.
-
-4. xray_naukri: Google X-ray for Naukri. Start with: site:naukri.com then role + 1-2 skills in quotes. Do NOT use /profile. Example: site:naukri.com "DevOps Engineer" "Docker" "Kubernetes"
-
-5. xray_indeed: Google X-ray for Indeed resumes. Start with: site:indeed.com/r then role + 1-2 skills in quotes.
-
-6. xray_dice: Google X-ray for Dice profiles. Start with: site:dice.com then role + 1-2 skills in quotes.
-
-7. xray_careerbuilder: Google X-ray for CareerBuilder resumes. Start with: site:careerbuilder.com/resume then role + 1-2 skills in quotes.
-
-8. xray_monster: Google X-ray for Monster resumes. Start with: site:monster.com/resume then role + 1-2 skills in quotes.`,
+GOOGLE X-RAY SEARCHES (for finding profiles/resumes via Google):
+7. xray_linkedin: site:linkedin.com/in then role + 2 skills in quotes.
+8. xray_naukri: site:naukri.com then role + 1-2 skills in quotes. Do NOT use /profile.
+9. xray_indeed: site:indeed.com/r then role + 1-2 skills in quotes.
+10. xray_dice: site:dice.com then role + 1-2 skills in quotes.
+11. xray_careerbuilder: site:careerbuilder.com/resume then role + 1-2 skills in quotes.
+12. xray_monster: site:monster.com/resume then role + 1-2 skills in quotes.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -205,6 +205,10 @@ Generate optimized candidate search queries. Return JSON with these 8 fields:
           properties: {
             linkedin_boolean: { type: Type.STRING },
             naukri_keywords: { type: Type.STRING },
+            indeed_boolean: { type: Type.STRING },
+            dice_boolean: { type: Type.STRING },
+            careerbuilder_boolean: { type: Type.STRING },
+            monster_boolean: { type: Type.STRING },
             xray_linkedin: { type: Type.STRING },
             xray_naukri: { type: Type.STRING },
             xray_indeed: { type: Type.STRING },
@@ -212,7 +216,7 @@ Generate optimized candidate search queries. Return JSON with these 8 fields:
             xray_careerbuilder: { type: Type.STRING },
             xray_monster: { type: Type.STRING },
           },
-          required: ["linkedin_boolean", "naukri_keywords", "xray_linkedin", "xray_naukri", "xray_indeed", "xray_dice", "xray_careerbuilder", "xray_monster"],
+          required: ["linkedin_boolean", "naukri_keywords", "indeed_boolean", "dice_boolean", "careerbuilder_boolean", "monster_boolean", "xray_linkedin", "xray_naukri", "xray_indeed", "xray_dice", "xray_careerbuilder", "xray_monster"],
         },
       },
     });

@@ -60,16 +60,16 @@ interface InterviewReport {
 interface SearchQueries {
   linkedin_boolean: string;
   naukri_keywords: string;
+  indeed_boolean: string;
+  dice_boolean: string;
+  careerbuilder_boolean: string;
+  monster_boolean: string;
   xray_linkedin: string;
   xray_naukri: string;
   xray_indeed: string;
   xray_dice: string;
   xray_careerbuilder: string;
   xray_monster: string;
-  linkedin_search_url: string;
-  naukri_search_url: string;
-  google_xray_linkedin_url: string;
-  google_xray_naukri_url: string;
   found?: boolean;
 }
 
@@ -715,63 +715,90 @@ function SourcingTab({ jobId }: { jobId: string }) {
 
       {queries && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
-          {/* LinkedIn */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Linkedin className="w-4 h-4 text-blue-600" />
-                <span className="text-sm font-medium text-neutral-800">LinkedIn Boolean Search</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CopyButton text={queries.linkedin_boolean} />
-                <button
-                  onClick={() => window.open(`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(queries.linkedin_boolean)}`, '_blank', 'noopener,noreferrer')}
-                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors cursor-pointer"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  Search LinkedIn
-                </button>
-              </div>
-            </div>
-            <div className="bg-neutral-900 rounded-2xl p-4 overflow-x-auto">
-              <code className="text-emerald-400 text-sm font-mono leading-relaxed whitespace-pre-wrap break-words">
-                {queries.linkedin_boolean}
-              </code>
-            </div>
-          </div>
 
-          {/* Naukri */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Globe className="w-4 h-4 text-orange-500" />
-                <span className="text-sm font-medium text-neutral-800">Naukri Keywords</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CopyButton text={queries.naukri_keywords} />
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(queries.naukri_keywords).catch(() => {});
-                    window.open('https://resdex.naukri.com/', '_blank', 'noopener,noreferrer');
-                  }}
-                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl bg-orange-500 text-white hover:bg-orange-600 transition-colors cursor-pointer"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  Search Naukri
-                </button>
-              </div>
-            </div>
-            <p className="text-xs text-neutral-400 mb-2">Keywords copied to clipboard — paste in ResdEx search bar.</p>
-            <div className="bg-neutral-900 rounded-2xl p-4 overflow-x-auto">
-              <code className="text-orange-300 text-sm font-mono leading-relaxed whitespace-pre-wrap break-words">
-                {queries.naukri_keywords}
-              </code>
-            </div>
-          </div>
+          {/* ── Direct Platform Searches ── */}
+          <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Direct Platform Searches</p>
 
-          {/* Google X-ray — All Platforms */}
-          <div>
-            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Google X-ray Searches</p>
+          {[
+            {
+              label: 'LinkedIn', query: queries.linkedin_boolean,
+              icon: <Linkedin className="w-4 h-4 text-blue-600" />, textColor: 'text-emerald-400',
+              btnClass: 'bg-blue-600 hover:bg-blue-700 text-white',
+              btnLabel: 'Search LinkedIn',
+              onSearch: () => window.open(`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(queries.linkedin_boolean)}`, '_blank', 'noopener,noreferrer'),
+              hint: null,
+            },
+            {
+              label: 'Naukri', query: queries.naukri_keywords,
+              icon: <Globe className="w-4 h-4 text-orange-500" />, textColor: 'text-orange-300',
+              btnClass: 'bg-orange-500 hover:bg-orange-600 text-white',
+              btnLabel: 'Search Naukri',
+              onSearch: () => { navigator.clipboard.writeText(queries.naukri_keywords).catch(() => {}); window.open('https://resdex.naukri.com/', '_blank', 'noopener,noreferrer'); },
+              hint: 'Keywords copied to clipboard — paste in ResdEx search bar.',
+            },
+            {
+              label: 'Indeed', query: queries.indeed_boolean,
+              icon: <Search className="w-4 h-4 text-indigo-500" />, textColor: 'text-indigo-400',
+              btnClass: 'bg-indigo-600 hover:bg-indigo-700 text-white',
+              btnLabel: 'Search Indeed',
+              onSearch: () => window.open(`https://www.indeed.com/jobs?q=${encodeURIComponent(queries.indeed_boolean)}`, '_blank', 'noopener,noreferrer'),
+              hint: null,
+            },
+            {
+              label: 'Dice', query: queries.dice_boolean,
+              icon: <Globe className="w-4 h-4 text-red-500" />, textColor: 'text-red-400',
+              btnClass: 'bg-red-600 hover:bg-red-700 text-white',
+              btnLabel: 'Search Dice',
+              onSearch: () => window.open(`https://www.dice.com/jobs?q=${encodeURIComponent(queries.dice_boolean)}`, '_blank', 'noopener,noreferrer'),
+              hint: null,
+            },
+            {
+              label: 'CareerBuilder', query: queries.careerbuilder_boolean,
+              icon: <Briefcase className="w-4 h-4 text-green-600" />, textColor: 'text-emerald-400',
+              btnClass: 'bg-green-700 hover:bg-green-800 text-white',
+              btnLabel: 'Search CareerBuilder',
+              onSearch: () => window.open(`https://www.careerbuilder.com/jobs?keywords=${encodeURIComponent(queries.careerbuilder_boolean)}`, '_blank', 'noopener,noreferrer'),
+              hint: null,
+            },
+            {
+              label: 'Monster', query: queries.monster_boolean,
+              icon: <Users className="w-4 h-4 text-purple-500" />, textColor: 'text-purple-400',
+              btnClass: 'bg-purple-600 hover:bg-purple-700 text-white',
+              btnLabel: 'Search Monster',
+              onSearch: () => window.open(`https://www.monster.com/jobs/search/?q=${encodeURIComponent(queries.monster_boolean)}`, '_blank', 'noopener,noreferrer'),
+              hint: null,
+            },
+          ].map(({ label, query, icon, textColor, btnClass, btnLabel, onSearch, hint }) => (
+            <div key={label}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  {icon}
+                  <span className="text-sm font-medium text-neutral-800">{label}{label === 'Naukri' ? ' Keywords' : ' Boolean'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CopyButton text={query} />
+                  <button
+                    onClick={onSearch}
+                    disabled={!query}
+                    className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl transition-colors cursor-pointer disabled:opacity-40 ${btnClass}`}
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    {btnLabel}
+                  </button>
+                </div>
+              </div>
+              {hint && <p className="text-xs text-neutral-400 mb-2">{hint}</p>}
+              <div className="bg-neutral-900 rounded-2xl p-4 overflow-x-auto">
+                <code className={`${textColor} text-sm font-mono leading-relaxed whitespace-pre-wrap break-words`}>
+                  {query || 'Regenerate to get query'}
+                </code>
+              </div>
+            </div>
+          ))}
+
+          {/* ── Google X-ray Searches ── */}
+          <div className="pt-2">
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-4">Google X-ray Searches</p>
             <div className="space-y-4">
               {[
                 { label: 'LinkedIn', query: queries.xray_linkedin, icon: <Linkedin className="w-4 h-4 text-blue-600" />, textColor: 'text-blue-400' },
@@ -808,6 +835,7 @@ function SourcingTab({ jobId }: { jobId: string }) {
               ))}
             </div>
           </div>
+
         </motion.div>
       )}
     </div>
