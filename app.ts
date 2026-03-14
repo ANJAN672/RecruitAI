@@ -16,6 +16,45 @@ function getAI() {
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
 
+// Fallback to OpenRouter when Gemini rate-limits (429)
+async function generateWithFallback(prompt: string, schema: any): Promise<any> {
+  // Try Gemini first
+  try {
+    const response = await getAI().models.generateContent({
+      model: MODEL,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: schema,
+      },
+    });
+    return JSON.parse(response.text || "{}");
+  } catch (err: any) {
+    if (err?.status !== 429) throw err;
+    console.warn("Gemini rate-limited, falling back to OpenRouter...");
+  }
+
+  // Fallback: OpenRouter
+  const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: process.env.OPENROUTER_MODEL || "stepfun/step-3.5-flash:free",
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "Respond with valid JSON only." },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+  if (!orRes.ok) throw new Error(`OpenRouter error ${orRes.status}`);
+  const orJson = await orRes.json();
+  return JSON.parse(orJson.choices?.[0]?.message?.content || "{}");
+}
+
 async function requireAuth(req: any, res: any, next: any) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
@@ -87,26 +126,20 @@ app.post("/api/jobs", requireAuth, async (req: any, res) => {
       return res.status(400).json({ error: "Title and description are required" });
     }
 
-    const response = await getAI().models.generateContent({
-      model: MODEL,
-      contents: `Extract structured hiring requirements from this job description.\n\nJob Description:\n${description}`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            role: { type: Type.STRING, description: "Primary role / job title" },
-            experience: { type: Type.STRING, description: "Required years of experience" },
-            hard_skills: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Required technical skills" },
-            soft_skills: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Required soft skills" },
-            certifications: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Required or preferred certifications" },
-          },
-          required: ["role", "experience", "hard_skills", "soft_skills", "certifications"],
+    const parsed = await generateWithFallback(
+      `Extract structured hiring requirements from this job description. Return JSON with: role (string), experience (string), hard_skills (array of strings), soft_skills (array of strings), certifications (array of strings).\n\nJob Description:\n${description}`,
+      {
+        type: Type.OBJECT,
+        properties: {
+          role: { type: Type.STRING },
+          experience: { type: Type.STRING },
+          hard_skills: { type: Type.ARRAY, items: { type: Type.STRING } },
+          soft_skills: { type: Type.ARRAY, items: { type: Type.STRING } },
+          certifications: { type: Type.ARRAY, items: { type: Type.STRING } },
         },
-      },
-    });
-
-    const parsed = JSON.parse(response.text || "{}");
+        required: ["role", "experience", "hard_skills", "soft_skills", "certifications"],
+      }
+    );
 
     const { data, error } = await supabase
       .from("jobs")
@@ -186,9 +219,8 @@ app.post("/api/jobs/:id/boolean-search", requireAuth, async (req: any, res) => {
 
     const hardSkills: string[] = JSON.parse(job.hard_skills || "[]");
 
-    const response = await getAI().models.generateContent({
-      model: MODEL,
-      contents: `You are an expert technical recruiter and sourcing specialist.
+    const queries = await generateWithFallback(
+      `You are an expert technical recruiter and sourcing specialist.
 
 Job Details:
 - Role: ${job.role}
@@ -211,31 +243,28 @@ GOOGLE X-RAY SEARCHES (for finding profiles/resumes via Google):
 9. xray_indeed: site:indeed.com/r then role + 1-2 skills in quotes.
 10. xray_dice: site:dice.com then role + 1-2 skills in quotes.
 11. xray_careerbuilder: site:careerbuilder.com then role + 1-2 skills in quotes. Do NOT use /resume path.
-12. xray_monster: site:monster.com then role + 1-2 skills in quotes. Do NOT use /resume path.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            linkedin_boolean: { type: Type.STRING },
-            naukri_keywords: { type: Type.STRING },
-            indeed_boolean: { type: Type.STRING },
-            dice_boolean: { type: Type.STRING },
-            careerbuilder_boolean: { type: Type.STRING },
-            monster_boolean: { type: Type.STRING },
-            xray_linkedin: { type: Type.STRING },
-            xray_naukri: { type: Type.STRING },
-            xray_indeed: { type: Type.STRING },
-            xray_dice: { type: Type.STRING },
-            xray_careerbuilder: { type: Type.STRING },
-            xray_monster: { type: Type.STRING },
-          },
-          required: ["linkedin_boolean", "naukri_keywords", "indeed_boolean", "dice_boolean", "careerbuilder_boolean", "monster_boolean", "xray_linkedin", "xray_naukri", "xray_indeed", "xray_dice", "xray_careerbuilder", "xray_monster"],
-        },
-      },
-    });
+12. xray_monster: site:monster.com then role + 1-2 skills in quotes.
 
-    const queries = JSON.parse(response.text || "{}");
+Return JSON with exactly these 12 string fields: linkedin_boolean, naukri_keywords, indeed_boolean, dice_boolean, careerbuilder_boolean, monster_boolean, xray_linkedin, xray_naukri, xray_indeed, xray_dice, xray_careerbuilder, xray_monster.`,
+      {
+        type: Type.OBJECT,
+        properties: {
+          linkedin_boolean: { type: Type.STRING },
+          naukri_keywords: { type: Type.STRING },
+          indeed_boolean: { type: Type.STRING },
+          dice_boolean: { type: Type.STRING },
+          careerbuilder_boolean: { type: Type.STRING },
+          monster_boolean: { type: Type.STRING },
+          xray_linkedin: { type: Type.STRING },
+          xray_naukri: { type: Type.STRING },
+          xray_indeed: { type: Type.STRING },
+          xray_dice: { type: Type.STRING },
+          xray_careerbuilder: { type: Type.STRING },
+          xray_monster: { type: Type.STRING },
+        },
+        required: ["linkedin_boolean", "naukri_keywords", "indeed_boolean", "dice_boolean", "careerbuilder_boolean", "monster_boolean", "xray_linkedin", "xray_naukri", "xray_indeed", "xray_dice", "xray_careerbuilder", "xray_monster"],
+      }
+    );
 
     await supabase.from("boolean_searches").insert({
       job_id: parseInt(req.params.id),
@@ -381,9 +410,8 @@ app.post("/api/jobs/:id/candidates", requireAuth, async (req: any, res) => {
 
     if (jobErr || !job) return res.status(404).json({ error: "Job not found" });
 
-    const response = await getAI().models.generateContent({
-      model: MODEL,
-      contents: `Analyze this candidate profile against the job requirements. Provide both a technical match assessment AND a behavioral/cultural analysis.
+    const parsed = await generateWithFallback(
+      `Analyze this candidate profile against the job requirements. Provide both a technical match assessment AND a behavioral/cultural analysis.
 
 Job Requirements:
 - Role: ${job.role}
@@ -395,24 +423,21 @@ Candidate Profile:
 ${profile_text}
 
 1. Extract skills, summarize experience, score match 0-100, and give 1-2 sentence reasoning.
-2. Write a behavioral_summary: Analyze communication style, leadership indicators, collaboration signals, career trajectory, red flags, and cultural fit signals visible in the profile text. 3-5 sentences.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            skills: { type: Type.ARRAY, items: { type: Type.STRING } },
-            experience: { type: Type.STRING },
-            match_score: { type: Type.INTEGER },
-            match_reasoning: { type: Type.STRING },
-            behavioral_summary: { type: Type.STRING },
-          },
-          required: ["skills", "experience", "match_score", "match_reasoning", "behavioral_summary"],
-        },
-      },
-    });
+2. Write a behavioral_summary: Analyze communication style, leadership indicators, collaboration signals, career trajectory, red flags, and cultural fit signals visible in the profile text. 3-5 sentences.
 
-    const parsed = JSON.parse(response.text || "{}");
+Return JSON with fields: skills (array of strings), experience (string), match_score (integer 0-100), match_reasoning (string), behavioral_summary (string).`,
+      {
+        type: Type.OBJECT,
+        properties: {
+          skills: { type: Type.ARRAY, items: { type: Type.STRING } },
+          experience: { type: Type.STRING },
+          match_score: { type: Type.INTEGER },
+          match_reasoning: { type: Type.STRING },
+          behavioral_summary: { type: Type.STRING },
+        },
+        required: ["skills", "experience", "match_score", "match_reasoning", "behavioral_summary"],
+      }
+    );
 
     const { data, error } = await supabase
       .from("candidates")
@@ -493,29 +518,25 @@ app.post("/api/candidates/:id/report", requireAuth, async (req: any, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const response = await getAI().models.generateContent({
-      model: MODEL,
-      contents: `Convert these raw interview notes into a structured evaluation report.
+    const parsed = await generateWithFallback(
+      `Convert these raw interview notes into a structured evaluation report.
 
 Notes:
 ${notes}
 
-Produce a professional summary of strengths, weaknesses, and a clear recommendation.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            strengths: { type: Type.STRING },
-            weaknesses: { type: Type.STRING },
-            recommendation: { type: Type.STRING },
-          },
-          required: ["strengths", "weaknesses", "recommendation"],
-        },
-      },
-    });
+Produce a professional summary of strengths, weaknesses, and a clear recommendation.
 
-    const parsed = JSON.parse(response.text || "{}");
+Return JSON with fields: strengths (string), weaknesses (string), recommendation (string).`,
+      {
+        type: Type.OBJECT,
+        properties: {
+          strengths: { type: Type.STRING },
+          weaknesses: { type: Type.STRING },
+          recommendation: { type: Type.STRING },
+        },
+        required: ["strengths", "weaknesses", "recommendation"],
+      }
+    );
 
     const { data, error } = await supabase
       .from("interview_reports")
