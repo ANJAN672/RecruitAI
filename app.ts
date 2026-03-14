@@ -265,7 +265,13 @@ app.get("/api/jobs/:id/knowledge", requireAuth, async (req: any, res) => {
     .limit(1)
     .single();
 
-  if (!cached?.concepts) return res.json({ found: false });
+  if (!cached?.concepts) return res.json({ found: false, stale: false });
+  // Validate structure — concepts and interview_questions must be non-empty arrays
+  const valid =
+    Array.isArray(cached.concepts) && cached.concepts.length > 0 &&
+    Array.isArray(cached.interview_questions) && cached.interview_questions.length > 0 &&
+    cached.interview_questions.every((q: any) => q.question && q.expected_answer?.trim());
+  if (!valid) return res.json({ found: false, stale: true });
   return res.json({ found: true, ...cached });
 });
 
@@ -564,8 +570,12 @@ app.get("/api/jobs/:id/market-intelligence", requireAuth, async (req: any, res) 
     .limit(1)
     .single();
 
-  if (!cached?.data) return res.json({ found: false });
-  return res.json({ found: true, ...cached.data });
+  if (!cached?.data) return res.json({ found: false, stale: false });
+  // Validate structure — salary, demand, training must all be present
+  const d = cached.data;
+  const valid = d.salary?.india && d.salary?.us && d.demand && Array.isArray(d.training) && d.training.length > 0;
+  if (!valid) return res.json({ found: false, stale: true });
+  return res.json({ found: true, ...d });
 });
 
 app.post("/api/jobs/:id/market-intelligence", requireAuth, async (req: any, res) => {

@@ -702,7 +702,7 @@ function SourcingTab({ jobId }: { jobId: string }) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h4 className="text-lg font-medium text-neutral-900">Sourcing Toolkit</h4>
-          <p className="text-sm text-neutral-500 mt-1">AI-generated queries for LinkedIn, Naukri, and Google X-ray.</p>
+          <p className="text-sm text-neutral-500 mt-1">Boolean searches for LinkedIn, Naukri, Indeed, Dice, CareerBuilder, Monster + Google X-ray.</p>
         </div>
             <button onClick={generate} disabled={generating || loadingCache} className="btn-primary">
             {generating
@@ -878,9 +878,21 @@ function MarketIntelligenceTab({ jobId }: { jobId: string }) {
   React.useEffect(() => {
     api(`/api/jobs/${jobId}/market-intelligence`)
       .then(r => r.json())
-      .then(json => { if (json.found) setData(json); })
-      .catch(() => {})
-      .finally(() => setLoadingCache(false));
+      .then(json => {
+        if (json.found) {
+          setData(json);
+          setLoadingCache(false);
+        } else if (json.stale) {
+          api(`/api/jobs/${jobId}/market-intelligence`, { method: 'POST' })
+            .then(r => r.json())
+            .then(fresh => { if (fresh.found) setData(fresh); })
+            .catch(() => {})
+            .finally(() => setLoadingCache(false));
+        } else {
+          setLoadingCache(false);
+        }
+      })
+      .catch(() => setLoadingCache(false));
   }, [jobId]);
 
   const generate = async () => {
@@ -1026,15 +1038,27 @@ function JobDetails() {
 
   const [knowledgeLoadingCache, setKnowledgeLoadingCache] = React.useState(false);
 
-  // Auto-load cached knowledge when tab opens (GET, no AI)
+  // Auto-load cached knowledge when tab opens. If stale, auto-regenerate silently.
   React.useEffect(() => {
     if (activeTab !== 'interview_guide' || knowledge !== null || knowledgeLoadingCache) return;
     setKnowledgeLoadingCache(true);
     api(`/api/jobs/${id}/knowledge`)
       .then(r => r.json())
-      .then(data => { if (data.found) setKnowledge(data); })
-      .catch(() => {})
-      .finally(() => setKnowledgeLoadingCache(false));
+      .then(data => {
+        if (data.found) {
+          setKnowledge(data);
+          setKnowledgeLoadingCache(false);
+        } else if (data.stale) {
+          api(`/api/jobs/${id}/knowledge`, { method: 'POST' })
+            .then(r => r.json())
+            .then(fresh => { if (fresh.found) setKnowledge(fresh); })
+            .catch(() => {})
+            .finally(() => setKnowledgeLoadingCache(false));
+        } else {
+          setKnowledgeLoadingCache(false);
+        }
+      })
+      .catch(() => setKnowledgeLoadingCache(false));
   }, [activeTab, id]);
 
   // Button: POST → generate + store
