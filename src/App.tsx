@@ -12,7 +12,8 @@ import {
   Briefcase, Users, FileText, Search, Plus, ArrowLeft,
   CheckCircle, XCircle, Clock, BrainCircuit, ChevronRight,
   Copy, Loader2, LogOut, Eye, EyeOff, Check, ExternalLink,
-  Linkedin, Globe, RefreshCw,
+  Linkedin, Globe, RefreshCw, TrendingUp, Heart, Twitter,
+  DollarSign, BookOpen,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
@@ -61,6 +62,10 @@ interface SearchQueries {
   naukri_keywords: string;
   xray_linkedin: string;
   xray_naukri: string;
+  xray_indeed: string;
+  xray_dice: string;
+  xray_careerbuilder: string;
+  xray_monster: string;
   linkedin_search_url: string;
   naukri_search_url: string;
   google_xray_linkedin_url: string;
@@ -766,32 +771,143 @@ function SourcingTab({ jobId }: { jobId: string }) {
 
           {/* Google X-ray */}
           <div className="bg-neutral-50 rounded-2xl p-4 border border-neutral-100">
-            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Google X-ray</p>
-            <div className="grid sm:grid-cols-2 gap-2.5">
-              <button
-                onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(queries.xray_linkedin)}`, '_blank', 'noopener,noreferrer')}
-                className="flex items-center gap-2.5 p-3 bg-white border border-neutral-200 rounded-xl hover:border-blue-200 hover:bg-blue-50/50 transition-all group cursor-pointer text-left w-full"
-              >
-                <Linkedin className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-neutral-700 group-hover:text-blue-700">LinkedIn via Google</p>
-                  <p className="text-xs text-neutral-400 truncate">{queries.xray_linkedin}</p>
-                </div>
-                <ExternalLink className="w-3 h-3 text-neutral-300 flex-shrink-0 ml-auto" />
-              </button>
-              <button
-                onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(queries.xray_naukri)}`, '_blank', 'noopener,noreferrer')}
-                className="flex items-center gap-2.5 p-3 bg-white border border-neutral-200 rounded-xl hover:border-orange-200 hover:bg-orange-50/50 transition-all group cursor-pointer text-left w-full"
-              >
-                <Globe className="w-4 h-4 text-orange-500 flex-shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-neutral-700 group-hover:text-orange-700">Naukri via Google</p>
-                  <p className="text-xs text-neutral-400 truncate">{queries.xray_naukri}</p>
-                </div>
-                <ExternalLink className="w-3 h-3 text-neutral-300 flex-shrink-0 ml-auto" />
-              </button>
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Google X-ray — All Platforms</p>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {[
+                { label: 'LinkedIn', query: queries.xray_linkedin, color: 'blue', icon: <Linkedin className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" /> },
+                { label: 'Naukri', query: queries.xray_naukri, color: 'orange', icon: <Globe className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" /> },
+                { label: 'Indeed', query: queries.xray_indeed, color: 'indigo', icon: <Search className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" /> },
+                { label: 'Dice', query: queries.xray_dice, color: 'red', icon: <Globe className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> },
+                { label: 'CareerBuilder', query: queries.xray_careerbuilder, color: 'green', icon: <Briefcase className="w-3.5 h-3.5 text-green-600 flex-shrink-0" /> },
+                { label: 'Monster', query: queries.xray_monster, color: 'purple', icon: <Users className="w-3.5 h-3.5 text-purple-500 flex-shrink-0" /> },
+              ].map(({ label, query, icon }) => (
+                <button
+                  key={label}
+                  onClick={() => query && window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer')}
+                  disabled={!query}
+                  className="flex items-center gap-2 p-2.5 bg-white border border-neutral-200 rounded-xl hover:border-neutral-300 hover:bg-neutral-50 transition-all group cursor-pointer text-left w-full disabled:opacity-40"
+                >
+                  {icon}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-neutral-700">{label}</p>
+                    <p className="text-xs text-neutral-400 truncate">{query || 'Regenerate to get query'}</p>
+                  </div>
+                  <ExternalLink className="w-3 h-3 text-neutral-300 flex-shrink-0" />
+                </button>
+              ))}
             </div>
           </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+// ── Market Intelligence Tab ───────────────────────────────────────────────
+
+interface MarketIntel {
+  salary: { india: string; us: string; global_note: string };
+  demand: string;
+  training: Array<{ name: string; provider: string; type: string; url: string }>;
+}
+
+function MarketIntelligenceTab({ jobId }: { jobId: string }) {
+  const [data, setData] = React.useState<MarketIntel | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const generate = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api(`/api/jobs/${jobId}/market-intelligence`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed');
+      setData(json);
+    } catch (e: any) {
+      setError(e.message || 'Failed to generate');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="glass-card p-7">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h4 className="text-lg font-medium text-neutral-900">Market Intelligence</h4>
+          <p className="text-sm text-neutral-500 mt-1">Salary benchmarks and training resources for this role.</p>
+        </div>
+        <button onClick={generate} disabled={loading} className="btn-primary flex-shrink-0">
+          {loading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : data ? <RefreshCw className="mr-2 h-4 w-4" /> : <TrendingUp className="mr-2 h-4 w-4" />}
+          {loading ? 'Generating...' : data ? 'Refresh' : 'Generate Report'}
+        </button>
+      </div>
+
+      {error && <div className="mb-5 text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{error}</div>}
+
+      {!data && !loading && (
+        <div className="py-12 text-center text-neutral-400 border-2 border-dashed border-neutral-200 rounded-2xl">
+          <TrendingUp className="mx-auto h-8 w-8 mb-3 opacity-20" />
+          <p className="text-sm">Generate market intelligence to see salary benchmarks and training resources.</p>
+        </div>
+      )}
+
+      {data && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+          {/* Salary */}
+          <div>
+            <h5 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-emerald-500" /> Salary Benchmarks
+            </h5>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+                <p className="text-xs text-emerald-600 font-medium mb-1">India</p>
+                <p className="text-xl font-semibold text-emerald-800">{data.salary?.india || '—'}</p>
+              </div>
+              <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
+                <p className="text-xs text-blue-600 font-medium mb-1">United States</p>
+                <p className="text-xl font-semibold text-blue-800">{data.salary?.us || '—'}</p>
+              </div>
+            </div>
+            {data.salary?.global_note && (
+              <p className="text-xs text-neutral-500 mt-2 px-1">{data.salary.global_note}</p>
+            )}
+          </div>
+
+          {/* Demand */}
+          {data.demand && (
+            <div>
+              <h5 className="text-sm font-semibold text-neutral-700 mb-2 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-blue-500" /> Market Demand
+              </h5>
+              <p className="text-sm text-neutral-600 leading-relaxed bg-blue-50/50 border border-blue-100/50 rounded-2xl px-4 py-3">{data.demand}</p>
+            </div>
+          )}
+
+          {/* Training */}
+          {data.training?.length > 0 && (
+            <div>
+              <h5 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-purple-500" /> Training Resources
+              </h5>
+              <div className="space-y-2">
+                {data.training.map((t, i) => (
+                  <div key={i} className="flex items-start justify-between gap-3 p-3.5 bg-white border border-neutral-100 rounded-xl hover:border-neutral-200 transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-neutral-800 leading-snug">{t.name}</p>
+                      <p className="text-xs text-neutral-500 mt-0.5">{t.provider} · <span className="text-purple-600">{t.type}</span></p>
+                    </div>
+                    {t.url && (
+                      <button onClick={() => window.open(t.url, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 flex-shrink-0 mt-0.5">
+                        Visit <ExternalLink className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </motion.div>
       )}
     </div>
@@ -904,6 +1020,7 @@ function JobDetails() {
     { key: 'sourcing', label: 'Sourcing' },
     { key: 'overview', label: 'JD Overview' },
     { key: 'interview_guide', label: 'Interview Guide' },
+    { key: 'market_intelligence', label: 'Market Intelligence' },
   ];
 
   return (
@@ -1047,6 +1164,9 @@ function JobDetails() {
             </div>
           )}
 
+          {/* ── Market Intelligence ── */}
+          {activeTab === 'market_intelligence' && <MarketIntelligenceTab jobId={id!} />}
+
           {/* ── Interview Guide ── */}
           {activeTab === 'interview_guide' && (
             <div className="glass-card p-7">
@@ -1130,6 +1250,9 @@ function CandidateDetails() {
   const [isGeneratingReport, setIsGeneratingReport] = React.useState(false);
   const [interviewNotes, setInterviewNotes] = React.useState('');
   const [reportError, setReportError] = React.useState('');
+  const [activeTab, setActiveTab] = React.useState<'report' | 'behavioral'>('report');
+  const [behavioralNotes, setBehavioralNotes] = React.useState('');
+  const [notesSaved, setNotesSaved] = React.useState(false);
 
   React.useEffect(() => {
     if (!id) return;
@@ -1145,6 +1268,10 @@ function CandidateDetails() {
       .then(r => r.json())
       .then(data => setReports(Array.isArray(data) ? data : []))
       .catch(() => setReports([]));
+
+    // Load behavioral notes from localStorage
+    const saved = localStorage.getItem(`behavioral_${id}`);
+    if (saved) setBehavioralNotes(saved);
   }, [id]);
 
   const handleGenerateReport = async (e: React.FormEvent) => {
@@ -1167,6 +1294,12 @@ function CandidateDetails() {
     }
   };
 
+  const saveBehavioralNotes = () => {
+    localStorage.setItem(`behavioral_${id}`, behavioralNotes);
+    setNotesSaved(true);
+    setTimeout(() => setNotesSaved(false), 2000);
+  };
+
   if (candError) return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <Link to="/" className="inline-flex items-center text-sm text-neutral-500 hover:text-neutral-900 transition-colors mb-6">
@@ -1182,6 +1315,13 @@ function CandidateDetails() {
 
   const skills = parseJSON<string[]>(candidate.skills, []);
   const scoreColor = candidate.match_score >= 80 ? 'badge-green' : candidate.match_score >= 60 ? 'badge-yellow' : 'badge-red';
+
+  // Extract social links from profile_text and profile_url
+  const profileText = candidate.profile_text || '';
+  const linkedinUrl = candidate.profile_url || (profileText.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[\w-]+/)?.[0]) || null;
+  const twitterUrl = profileText.match(/https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[\w]+/)?.[0] || null;
+  const instagramUrl = profileText.match(/https?:\/\/(?:www\.)?instagram\.com\/[\w.]+/)?.[0] || null;
+  const twitterHandle = profileText.match(/(?<![a-zA-Z0-9])@([\w]+)(?=\s|$)/)?.[1] || null;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -1227,77 +1367,179 @@ function CandidateDetails() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="glass-card p-6 h-fit lg:sticky lg:top-[72px]">
-          <h4 className="font-medium text-neutral-900 mb-5 flex items-center gap-2">
-            <FileText className="h-4 w-4 text-blue-500" />
-            Interview Report Generator
-          </h4>
-          {reportError && (
-            <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-700">{reportError}</div>
-          )}
-          <form onSubmit={handleGenerateReport}>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-neutral-700 mb-1.5">Raw Interview Notes</label>
-              <textarea
-                rows={8}
-                required
-                value={interviewNotes}
-                onChange={e => setInterviewNotes(e.target.value)}
-                className="input-field resize-none"
-                placeholder="Paste your rough notes — e.g. Strong in React, struggled with system design, good communication..."
-              />
-            </div>
-            <button type="submit" disabled={isGeneratingReport} className="btn-primary w-full">
-              {isGeneratingReport && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
-              {isGeneratingReport ? 'Generating Report...' : 'Generate Structured Report'}
-            </button>
-          </form>
-        </div>
-
-        <div>
-          <h4 className="font-medium text-neutral-900 mb-5">
-            {reports.length > 0 ? `${reports.length} Report${reports.length !== 1 ? 's' : ''}` : 'Interview Reports'}
-          </h4>
-          {reports.length === 0 ? (
-            <div className="py-14 text-center text-neutral-400 border-2 border-dashed border-neutral-200 rounded-3xl">
-              <FileText className="mx-auto h-8 w-8 mb-3 opacity-20" />
-              <p className="text-sm">No reports yet. Generate one from the left.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {reports.map((report, i) => {
-                const rec = report.recommendation.toLowerCase();
-                const recBadge = rec.includes('proceed') || rec.includes('hire') ? 'badge-green' : rec.includes('reject') ? 'badge-red' : 'badge-yellow';
-                return (
-                  <motion.div key={report.id} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }} className="glass-card p-5">
-                    <div className="flex justify-between items-center mb-4">
-                      <span className="text-xs text-neutral-400 font-mono">
-                        {new Date(report.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </span>
-                      <span className={`badge ${recBadge}`}>{report.recommendation}</span>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="bg-emerald-50/60 border border-emerald-100/60 px-4 py-3 rounded-xl">
-                        <h5 className="text-xs font-semibold text-emerald-800 flex items-center gap-1.5 mb-1.5">
-                          <CheckCircle className="h-3.5 w-3.5" />Strengths
-                        </h5>
-                        <p className="text-sm text-emerald-900/80 leading-relaxed whitespace-pre-wrap">{report.strengths}</p>
-                      </div>
-                      <div className="bg-red-50/60 border border-red-100/60 px-4 py-3 rounded-xl">
-                        <h5 className="text-xs font-semibold text-red-800 flex items-center gap-1.5 mb-1.5">
-                          <XCircle className="h-3.5 w-3.5" />Areas of Concern
-                        </h5>
-                        <p className="text-sm text-red-900/80 leading-relaxed whitespace-pre-wrap">{report.weaknesses}</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+      {/* Tabs */}
+      <div className="flex gap-2 mb-5">
+        <button onClick={() => setActiveTab('report')} className={`nav-pill ${activeTab === 'report' ? 'active' : ''}`}>
+          <FileText className="w-3.5 h-3.5 inline mr-1.5" />Interview Report
+        </button>
+        <button onClick={() => setActiveTab('behavioral')} className={`nav-pill ${activeTab === 'behavioral' ? 'active' : ''}`}>
+          <Heart className="w-3.5 h-3.5 inline mr-1.5" />Behavioral & Socials
+        </button>
       </div>
+
+      <AnimatePresence mode="wait">
+        <motion.div key={activeTab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}>
+
+          {activeTab === 'report' && (
+            <div className="grid lg:grid-cols-2 gap-6">
+              <div className="glass-card p-6 h-fit lg:sticky lg:top-[72px]">
+                <h4 className="font-medium text-neutral-900 mb-5 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-blue-500" />
+                  Interview Report Generator
+                </h4>
+                {reportError && (
+                  <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-700">{reportError}</div>
+                )}
+                <form onSubmit={handleGenerateReport}>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-neutral-700 mb-1.5">Raw Interview Notes</label>
+                    <textarea
+                      rows={8}
+                      required
+                      value={interviewNotes}
+                      onChange={e => setInterviewNotes(e.target.value)}
+                      className="input-field resize-none"
+                      placeholder="Paste your rough notes — e.g. Strong in React, struggled with system design, good communication..."
+                    />
+                  </div>
+                  <button type="submit" disabled={isGeneratingReport} className="btn-primary w-full">
+                    {isGeneratingReport && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
+                    {isGeneratingReport ? 'Generating Report...' : 'Generate Structured Report'}
+                  </button>
+                </form>
+              </div>
+
+              <div>
+                <h4 className="font-medium text-neutral-900 mb-5">
+                  {reports.length > 0 ? `${reports.length} Report${reports.length !== 1 ? 's' : ''}` : 'Interview Reports'}
+                </h4>
+                {reports.length === 0 ? (
+                  <div className="py-14 text-center text-neutral-400 border-2 border-dashed border-neutral-200 rounded-3xl">
+                    <FileText className="mx-auto h-8 w-8 mb-3 opacity-20" />
+                    <p className="text-sm">No reports yet. Generate one from the left.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {reports.map((report, i) => {
+                      const rec = report.recommendation.toLowerCase();
+                      const recColor = rec.includes('proceed') || rec.includes('hire') || rec.includes('recommend') ? 'badge-green' : rec.includes('reject') || rec.includes('not recommend') ? 'badge-red' : 'badge-yellow';
+                      const recLabel = rec.includes('proceed') || rec.includes('hire') || rec.includes('recommend') ? 'Proceed' : rec.includes('reject') ? 'Reject' : 'Hold';
+                      return (
+                        <motion.div key={report.id} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }} className="glass-card p-5">
+                          <div className="flex justify-between items-center mb-4">
+                            <span className="text-xs text-neutral-400 font-mono">
+                              {new Date(report.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                            <span className={`badge ${recColor}`}>{recLabel}</span>
+                          </div>
+                          <div className="space-y-3">
+                            <div className="bg-emerald-50/60 border border-emerald-100/60 px-4 py-3 rounded-xl">
+                              <h5 className="text-xs font-semibold text-emerald-800 flex items-center gap-1.5 mb-1.5">
+                                <CheckCircle className="h-3.5 w-3.5" />Strengths
+                              </h5>
+                              <p className="text-sm text-emerald-900/80 leading-relaxed whitespace-pre-wrap">{report.strengths}</p>
+                            </div>
+                            <div className="bg-red-50/60 border border-red-100/60 px-4 py-3 rounded-xl">
+                              <h5 className="text-xs font-semibold text-red-800 flex items-center gap-1.5 mb-1.5">
+                                <XCircle className="h-3.5 w-3.5" />Areas of Concern
+                              </h5>
+                              <p className="text-sm text-red-900/80 leading-relaxed whitespace-pre-wrap">{report.weaknesses}</p>
+                            </div>
+                            <div className="bg-blue-50/60 border border-blue-100/60 px-4 py-3 rounded-xl">
+                              <h5 className="text-xs font-semibold text-blue-800 flex items-center gap-1.5 mb-1.5">
+                                <CheckCircle className="h-3.5 w-3.5" />Recommendation
+                              </h5>
+                              <p className="text-sm text-blue-900/80 leading-relaxed whitespace-pre-wrap">{report.recommendation}</p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'behavioral' && (
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* Social Links */}
+              <div className="glass-card p-6">
+                <h4 className="font-medium text-neutral-900 mb-5 flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-blue-500" />
+                  Social Profiles
+                </h4>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3.5 bg-neutral-50 rounded-xl border border-neutral-100">
+                    <div className="flex items-center gap-2.5">
+                      <Linkedin className="w-4 h-4 text-blue-600" />
+                      <span className="text-sm font-medium text-neutral-700">LinkedIn</span>
+                    </div>
+                    {linkedinUrl ? (
+                      <button onClick={() => window.open(linkedinUrl, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                        View Profile <ExternalLink className="w-3 h-3" />
+                      </button>
+                    ) : (
+                      <span className="text-xs text-neutral-400">Not found in profile</span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between p-3.5 bg-neutral-50 rounded-xl border border-neutral-100">
+                    <div className="flex items-center gap-2.5">
+                      <Twitter className="w-4 h-4 text-sky-500" />
+                      <span className="text-sm font-medium text-neutral-700">X / Twitter</span>
+                    </div>
+                    {twitterUrl ? (
+                      <button onClick={() => window.open(twitterUrl, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                        View Profile <ExternalLink className="w-3 h-3" />
+                      </button>
+                    ) : twitterHandle ? (
+                      <button onClick={() => window.open(`https://x.com/${twitterHandle}`, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                        @{twitterHandle} <ExternalLink className="w-3 h-3" />
+                      </button>
+                    ) : (
+                      <span className="text-xs text-neutral-400">Not found in profile</span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between p-3.5 bg-neutral-50 rounded-xl border border-neutral-100">
+                    <div className="flex items-center gap-2.5">
+                      <Heart className="w-4 h-4 text-pink-500" />
+                      <span className="text-sm font-medium text-neutral-700">Instagram</span>
+                    </div>
+                    {instagramUrl ? (
+                      <button onClick={() => window.open(instagramUrl, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                        View Profile <ExternalLink className="w-3 h-3" />
+                      </button>
+                    ) : (
+                      <span className="text-xs text-neutral-400">Not found in profile</span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-neutral-400 mt-3">Links extracted from profile text. Add them manually in the profile if missing.</p>
+              </div>
+
+              {/* Cultural Fit Notes */}
+              <div className="glass-card p-6">
+                <h4 className="font-medium text-neutral-900 mb-5 flex items-center gap-2">
+                  <Heart className="h-4 w-4 text-pink-500" />
+                  Cultural Fit & Behavioral Notes
+                </h4>
+                <textarea
+                  rows={8}
+                  value={behavioralNotes}
+                  onChange={e => { setBehavioralNotes(e.target.value); setNotesSaved(false); }}
+                  className="input-field resize-none mb-4"
+                  placeholder="Notes on cultural fit, communication style, team dynamics, enthusiasm, red flags, etc..."
+                />
+                <button onClick={saveBehavioralNotes} className="btn-primary w-full">
+                  {notesSaved ? <><Check className="mr-2 h-4 w-4" />Saved!</> : 'Save Notes'}
+                </button>
+                <p className="text-xs text-neutral-400 mt-2 text-center">Saved locally to this browser.</p>
+              </div>
+            </div>
+          )}
+
+        </motion.div>
+      </AnimatePresence>
     </motion.div>
   );
 }

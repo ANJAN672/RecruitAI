@@ -44,6 +44,10 @@ function buildSearchResponse(q: any) {
     naukri_keywords: q.naukri_keywords,
     xray_linkedin: q.xray_linkedin,
     xray_naukri: q.xray_naukri,
+    xray_indeed: q.xray_indeed || "",
+    xray_dice: q.xray_dice || "",
+    xray_careerbuilder: q.xray_careerbuilder || "",
+    xray_monster: q.xray_monster || "",
     linkedin_search_url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(q.linkedin_boolean)}`,
     naukri_search_url: `https://resdex.naukri.com/recruiter/search/profiles?q=${encodeURIComponent(q.naukri_keywords)}`,
     google_xray_linkedin_url: `https://www.google.com/search?q=${encodeURIComponent(q.xray_linkedin)}`,
@@ -177,15 +181,23 @@ Job Details:
 - Key Skills: ${hardSkills.slice(0, 6).join(", ")}
 - Experience Required: ${job.experience}
 
-Generate optimized candidate search queries. Return JSON with these 4 fields:
+Generate optimized candidate search queries. Return JSON with these 8 fields:
 
-1. linkedin_boolean: A SIMPLE and EFFECTIVE boolean for LinkedIn People Search (not Recruiter). MAXIMUM 2 AND groups. Format: (role synonyms OR ...) AND (1-2 top skills OR ...). Keep it short so LinkedIn actually returns results. Example for a React role: ("React Developer" OR "Frontend Engineer" OR "UI Developer") AND ("React" OR "Next.js")
+1. linkedin_boolean: A SIMPLE and EFFECTIVE boolean for LinkedIn People Search. MAXIMUM 2 AND groups. Format: (role synonyms OR ...) AND (1-2 top skills OR ...). Keep short so LinkedIn returns results. Example: ("React Developer" OR "Frontend Engineer") AND ("React" OR "TypeScript")
 
-2. naukri_keywords: Simple space-separated keywords for Naukri ResdEx candidate search. Just job title + 3-4 key skills, no boolean operators. Example: DevOps Engineer Docker Kubernetes AWS Terraform
+2. naukri_keywords: Simple space-separated keywords for Naukri ResdEx. Job title + 3-4 key skills. No operators. Example: DevOps Engineer Docker Kubernetes AWS Terraform
 
-3. xray_linkedin: Google X-ray for LinkedIn profiles. Start with: site:linkedin.com/in then role + 2 skills in quotes. Keep short.
+3. xray_linkedin: Google X-ray for LinkedIn. Start with: site:linkedin.com/in then role + 2 skills. Keep short.
 
-4. xray_naukri: Google X-ray for Naukri profiles. Start with: site:naukri.com/profile then role + 1-2 skills in quotes. Keep short.`,
+4. xray_naukri: Google X-ray for Naukri. Start with: site:naukri.com then role + 1-2 skills in quotes. Do NOT use /profile. Example: site:naukri.com "DevOps Engineer" "Docker" "Kubernetes"
+
+5. xray_indeed: Google X-ray for Indeed resumes. Start with: site:indeed.com/r then role + 1-2 skills in quotes.
+
+6. xray_dice: Google X-ray for Dice profiles. Start with: site:dice.com then role + 1-2 skills in quotes.
+
+7. xray_careerbuilder: Google X-ray for CareerBuilder resumes. Start with: site:careerbuilder.com/resume then role + 1-2 skills in quotes.
+
+8. xray_monster: Google X-ray for Monster resumes. Start with: site:monster.com/resume then role + 1-2 skills in quotes.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -195,8 +207,12 @@ Generate optimized candidate search queries. Return JSON with these 4 fields:
             naukri_keywords: { type: Type.STRING },
             xray_linkedin: { type: Type.STRING },
             xray_naukri: { type: Type.STRING },
+            xray_indeed: { type: Type.STRING },
+            xray_dice: { type: Type.STRING },
+            xray_careerbuilder: { type: Type.STRING },
+            xray_monster: { type: Type.STRING },
           },
-          required: ["linkedin_boolean", "naukri_keywords", "xray_linkedin", "xray_naukri"],
+          required: ["linkedin_boolean", "naukri_keywords", "xray_linkedin", "xray_naukri", "xray_indeed", "xray_dice", "xray_careerbuilder", "xray_monster"],
         },
       },
     });
@@ -513,6 +529,75 @@ app.get("/api/candidates/:id/reports", requireAuth, async (req: any, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
+});
+
+// ── Market Intelligence ───────────────────────────────────────────────
+
+app.post("/api/jobs/:id/market-intelligence", requireAuth, async (req: any, res) => {
+  try {
+    const { data: job, error } = await supabase.from("jobs").select("*").eq("id", req.params.id).eq("user_id", req.user.id).single();
+    if (error || !job) return res.status(404).json({ error: "Job not found" });
+
+    const skillsList = parseSkills(job.hard_skills).slice(0, 8).join(", ");
+
+    const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_MODEL || "stepfun/step-3.5-flash:free",
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: "You are a compensation and HR market research specialist. Always respond with valid JSON only.",
+          },
+          {
+            role: "user",
+            content: `Generate market intelligence for this role.
+
+Role: ${job.role}
+Experience Required: ${job.experience}
+Key Skills: ${skillsList}
+
+Return a JSON object with exactly this structure:
+{
+  "salary": {
+    "india": "₹X-Y LPA",
+    "us": "$X,000-$Y,000/year",
+    "global_note": "One sentence on global variance"
+  },
+  "demand": "2-3 sentence summary of current market demand for this role and skills",
+  "training": [
+    {
+      "name": "Course or certification title",
+      "provider": "Provider name (Udemy, Coursera, Linux Foundation, etc)",
+      "type": "Certification or Online Course or Bootcamp",
+      "url": "https://real-url.com"
+    }
+  ]
+}
+
+Provide exactly 5 training resources. Use accurate, current salary ranges. Training resources must be real courses/certifications that actually exist at the given URLs.`,
+          },
+        ],
+      }),
+    });
+
+    if (!orRes.ok) throw new Error(`OpenRouter error ${orRes.status}`);
+    const orJson = await orRes.json();
+    const rawContent = orJson.choices?.[0]?.message?.content || "{}";
+
+    let parsed: any = {};
+    try { parsed = JSON.parse(rawContent); } catch { throw new Error("Invalid JSON"); }
+
+    res.json({ found: true, ...parsed });
+  } catch (err) {
+    console.error("Error generating market intelligence:", err);
+    res.status(500).json({ error: "Failed to generate market intelligence" });
+  }
 });
 
 export default app;
