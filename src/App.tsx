@@ -657,6 +657,7 @@ function SourcingTab({ jobId }: { jobId: string }) {
   const [loadingCache, setLoadingCache] = React.useState(true);
   const [generating, setGenerating] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [xrayTab, setXrayTab] = React.useState('LinkedIn');
 
   // On mount: fast cache fetch (GET, no AI)
   React.useEffect(() => {
@@ -797,44 +798,49 @@ function SourcingTab({ jobId }: { jobId: string }) {
           ))}
 
           {/* ── Google X-ray Searches ── */}
-          <div className="pt-2">
-            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-4">Google X-ray Searches</p>
-            <div className="space-y-4">
-              {[
-                { label: 'LinkedIn', query: queries.xray_linkedin, icon: <Linkedin className="w-4 h-4 text-blue-600" />, textColor: 'text-blue-400' },
-                { label: 'Naukri', query: queries.xray_naukri, icon: <Globe className="w-4 h-4 text-orange-500" />, textColor: 'text-orange-300' },
-                { label: 'Indeed', query: queries.xray_indeed, icon: <Search className="w-4 h-4 text-indigo-500" />, textColor: 'text-indigo-400' },
-                { label: 'Dice', query: queries.xray_dice, icon: <Globe className="w-4 h-4 text-red-500" />, textColor: 'text-red-400' },
-                { label: 'CareerBuilder', query: queries.xray_careerbuilder, icon: <Briefcase className="w-4 h-4 text-green-600" />, textColor: 'text-emerald-400' },
-                { label: 'Monster', query: queries.xray_monster, icon: <Users className="w-4 h-4 text-purple-500" />, textColor: 'text-purple-400' },
-              ].map(({ label, query, icon, textColor }) => (
-                <div key={label}>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      {icon}
-                      <span className="text-sm font-medium text-neutral-800">{label} X-ray</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {query && <CopyButton text={query} />}
-                      <button
-                        onClick={() => query && window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer')}
-                        disabled={!query}
-                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl bg-neutral-800 text-white hover:bg-neutral-700 transition-colors cursor-pointer disabled:opacity-40"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        Search Google
-                      </button>
-                    </div>
-                  </div>
-                  <div className="bg-neutral-900 rounded-2xl p-4 overflow-x-auto">
-                    <code className={`${textColor} text-sm font-mono leading-relaxed whitespace-pre-wrap break-words`}>
-                      {query || 'Regenerate to get query'}
-                    </code>
-                  </div>
+          {(() => {
+            const xrayPlatforms = [
+              { label: 'LinkedIn', query: queries.xray_linkedin, textColor: 'text-blue-400' },
+              { label: 'Naukri', query: queries.xray_naukri, textColor: 'text-orange-300' },
+              { label: 'Indeed', query: queries.xray_indeed, textColor: 'text-indigo-400' },
+              { label: 'Dice', query: queries.xray_dice, textColor: 'text-red-400' },
+              { label: 'CareerBuilder', query: queries.xray_careerbuilder, textColor: 'text-emerald-400' },
+              { label: 'Monster', query: queries.xray_monster, textColor: 'text-purple-400' },
+            ];
+            const active = xrayPlatforms.find(p => p.label === xrayTab) || xrayPlatforms[0];
+            return (
+              <div className="pt-2">
+                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Google X-ray Searches</p>
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {xrayPlatforms.map(p => (
+                    <button
+                      key={p.label}
+                      onClick={() => setXrayTab(p.label)}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${xrayTab === p.label ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="bg-neutral-900 rounded-2xl p-4 overflow-x-auto mb-2">
+                  <code className={`${active.textColor} text-sm font-mono leading-relaxed whitespace-pre-wrap break-words`}>
+                    {active.query || 'Regenerate to get query'}
+                  </code>
+                </div>
+                <div className="flex justify-end gap-2">
+                  {active.query && <CopyButton text={active.query} />}
+                  <button
+                    onClick={() => active.query && window.open(`https://www.google.com/search?q=${encodeURIComponent(active.query)}`, '_blank', 'noopener,noreferrer')}
+                    disabled={!active.query}
+                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl bg-neutral-800 text-white hover:bg-neutral-700 transition-colors cursor-pointer disabled:opacity-40"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Search Google
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
         </motion.div>
       )}
