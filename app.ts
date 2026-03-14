@@ -614,10 +614,12 @@ Each entry must be a real institution with a real URL. Focus on institutions tha
     let parsed: any = {};
     try { parsed = JSON.parse(rawContent); } catch { throw new Error("Invalid JSON"); }
 
-    await supabase.from("market_intelligence").insert({
+    supabase.from("market_intelligence").insert({
       job_id: parseInt(req.params.id),
       user_id: req.user.id,
       data: parsed,
+    }).then(({ error }) => {
+      if (error) console.warn("market_intelligence insert skipped:", error.message);
     });
 
     res.json({ found: true, ...parsed });
