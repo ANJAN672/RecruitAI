@@ -913,7 +913,7 @@ function MarketIntelligenceTab({ jobId }: { jobId: string }) {
           {data.training?.length > 0 && (
             <div>
               <h5 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-purple-500" /> Institutes & Training Bodies
+                <BookOpen className="w-4 h-4 text-purple-500" /> Academic & Professional Institutions
               </h5>
               <div className="space-y-2">
                 {data.training.map((t, i) => (

@@ -598,10 +598,18 @@ Return a JSON object with exactly this structure:
   ]
 }
 
-For the "training" array, provide exactly 6 real-world INSTITUTIONS and BODIES (not edtech platforms like Udemy/Coursera):
-- 3 Indian institutions: e.g. IITs, NITs, CDAC, NASSCOM FutureSkills, NIIT, Aptech, GNIIT, Jetking, ISRO, government skill programs (PMKVY), professional bodies (CSI, IETE)
-- 3 global institutions: e.g. MIT, Stanford, Carnegie Mellon, Linux Foundation, IEEE, ACM, The Open Group, CompTIA, AWS Training, Microsoft Learn official programs, Red Hat Academy
-Each entry must be a real institution with a real URL. Focus on institutions that have programs directly relevant to: ${skillsList}`,
+For the "training" array, provide exactly 6 entries. These MUST be real-world ACADEMIC UNIVERSITIES, GOVERNMENT INSTITUTES, or OFFICIAL PROFESSIONAL STANDARDS BODIES only.
+
+STRICTLY FORBIDDEN — do NOT include any of these or anything like them:
+- Online course platforms: Udemy, Coursera, edX, Pluralsight, LinkedIn Learning, Skillshare, Alison, Khan Academy
+- Bootcamps or coding schools: freeCodeCamp, Codecademy, Scrimba, The Odin Project, Guru99, W3Schools
+- Any platform whose primary business is selling online video courses
+
+REQUIRED — only these types of institutions:
+- Indian: IIT Bombay, IIT Delhi, IIT Madras, IIT Kanpur, NIT Trichy, CDAC (Centre for Development of Advanced Computing), NASSCOM FutureSkills Prime, CSI (Computer Society of India), IETE, C-DAC ACTS Pune
+- Global: MIT (Massachusetts Institute of Technology), Stanford University, Carnegie Mellon University, Linux Foundation, IEEE (Institute of Electrical and Electronics Engineers), ACM (Association for Computing Machinery), The Open Group, Red Hat Academy, CompTIA, PMI (Project Management Institute)
+
+Each entry must be a real institution with a verifiable official URL. Focus on institutions that have programs or certifications directly relevant to: ${skillsList}`,
           },
         ],
       }),
