@@ -88,17 +88,33 @@ function isCacheComplete(q: any): boolean {
   return BOOLEAN_REQUIRED_FIELDS.every(f => typeof q[f] === "string" && q[f].trim() !== "");
 }
 
+// Server-side enforcement: limit AND groups and OR terms so platform searches always work.
+// AI prompts request limits but sometimes ignore them — this guarantees compliance.
+function sanitizeBoolean(query: string, maxAndGroups = 2, maxOrTerms = 3): string {
+  if (!query) return query;
+  const groups = query.split(/\s+AND\s+/i);
+  const limited = groups.slice(0, maxAndGroups);
+  const sanitized = limited.map(group => {
+    const match = group.match(/\((.+)\)/);
+    if (!match) return group.trim();
+    const terms = match[1].split(/\s+OR\s+/i);
+    const limitedTerms = terms.slice(0, maxOrTerms);
+    return `(${limitedTerms.join(" OR ")})`;
+  });
+  return sanitized.join(" AND ");
+}
+
 function buildSearchResponse(q: any) {
   return {
     found: true,
-    linkedin_boolean: q.linkedin_boolean,
-    naukri_keywords: q.naukri_keywords,
-    indeed_boolean: q.indeed_boolean || "",
-    dice_boolean: q.dice_boolean || "",
-    careerbuilder_boolean: q.careerbuilder_boolean || "",
-    monster_boolean: q.monster_boolean || "",
-    xray_linkedin: q.xray_linkedin,
-    xray_naukri: q.xray_naukri,
+    linkedin_boolean: sanitizeBoolean(q.linkedin_boolean || ""),
+    naukri_keywords: q.naukri_keywords || "",
+    indeed_boolean: sanitizeBoolean(q.indeed_boolean || ""),
+    dice_boolean: sanitizeBoolean(q.dice_boolean || ""),
+    careerbuilder_boolean: sanitizeBoolean(q.careerbuilder_boolean || ""),
+    monster_boolean: sanitizeBoolean(q.monster_boolean || ""),
+    xray_linkedin: q.xray_linkedin || "",
+    xray_naukri: q.xray_naukri || "",
     xray_indeed: q.xray_indeed || "",
     xray_dice: q.xray_dice || "",
     xray_careerbuilder: q.xray_careerbuilder || "",
