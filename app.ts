@@ -198,7 +198,7 @@ Job Details:
 Generate optimized candidate search queries. Return JSON with these 12 fields:
 
 DIRECT PLATFORM BOOLEAN SEARCHES (for searching directly on each platform):
-1. linkedin_boolean: LinkedIn People Search boolean. MAXIMUM 2 AND groups. Example: ("React Developer" OR "Frontend Engineer") AND ("React" OR "TypeScript")
+1. linkedin_boolean: LinkedIn People Search boolean. MAXIMUM 2 AND groups, MAXIMUM 3 OR terms per group. Never use single-letter terms (use "R programming" not "R"). Example: ("React Developer" OR "Frontend Engineer") AND ("React" OR "TypeScript")
 2. naukri_keywords: Simple space-separated keywords for Naukri ResdEx. Job title + 3-4 skills. No operators.
 3. indeed_boolean: Indeed job search boolean. Same format as linkedin_boolean. MAXIMUM 2 AND groups.
 4. dice_boolean: Dice.com search boolean. Same format as linkedin_boolean. MAXIMUM 2 AND groups.
