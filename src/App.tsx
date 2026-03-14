@@ -808,7 +808,7 @@ function SourcingTab({ jobId }: { jobId: string }) {
 interface MarketIntel {
   salary: { india: string; us: string; global_note: string };
   demand: string;
-  training: Array<{ name: string; provider: string; type: string; url: string }>;
+  training: Array<{ name: string; provider: string; type: string; location: string; url: string }>;
 }
 
 function MarketIntelligenceTab({ jobId }: { jobId: string }) {
@@ -889,14 +889,17 @@ function MarketIntelligenceTab({ jobId }: { jobId: string }) {
           {data.training?.length > 0 && (
             <div>
               <h5 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-purple-500" /> Training Resources
+                <BookOpen className="w-4 h-4 text-purple-500" /> Institutes & Training Bodies
               </h5>
               <div className="space-y-2">
                 {data.training.map((t, i) => (
                   <div key={i} className="flex items-start justify-between gap-3 p-3.5 bg-white border border-neutral-100 rounded-xl hover:border-neutral-200 transition-colors">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-neutral-800 leading-snug">{t.name}</p>
-                      <p className="text-xs text-neutral-500 mt-0.5">{t.provider} · <span className="text-purple-600">{t.type}</span></p>
+                      <p className="text-xs text-neutral-500 mt-0.5">
+                        {t.provider}
+                        {t.location && <span className={`ml-1.5 px-1.5 py-0.5 rounded text-xs font-medium ${t.location === 'India' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>{t.location}</span>}
+                      </p>
                     </div>
                     {t.url && (
                       <button onClick={() => window.open(t.url, '_blank', 'noopener,noreferrer')} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 flex-shrink-0 mt-0.5">

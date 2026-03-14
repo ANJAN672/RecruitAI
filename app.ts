@@ -572,15 +572,19 @@ Return a JSON object with exactly this structure:
   "demand": "2-3 sentence summary of current market demand for this role and skills",
   "training": [
     {
-      "name": "Course or certification title",
-      "provider": "Provider name (Udemy, Coursera, Linux Foundation, etc)",
-      "type": "Certification or Online Course or Bootcamp",
+      "name": "Institution or program name",
+      "provider": "Full institution name",
+      "location": "India or Global",
+      "type": "University / Government Institute / Professional Body / Certification Authority",
       "url": "https://real-url.com"
     }
   ]
 }
 
-Provide exactly 5 training resources. Use accurate, current salary ranges. Training resources must be real courses/certifications that actually exist at the given URLs.`,
+For the "training" array, provide exactly 6 real-world INSTITUTIONS and BODIES (not edtech platforms like Udemy/Coursera):
+- 3 Indian institutions: e.g. IITs, NITs, CDAC, NASSCOM FutureSkills, NIIT, Aptech, GNIIT, Jetking, ISRO, government skill programs (PMKVY), professional bodies (CSI, IETE)
+- 3 global institutions: e.g. MIT, Stanford, Carnegie Mellon, Linux Foundation, IEEE, ACM, The Open Group, CompTIA, AWS Training, Microsoft Learn official programs, Red Hat Academy
+Each entry must be a real institution with a real URL. Focus on institutions that have programs directly relevant to: ${skillsList}`,
           },
         ],
       }),
