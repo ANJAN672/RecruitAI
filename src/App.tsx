@@ -659,13 +659,26 @@ function SourcingTab({ jobId }: { jobId: string }) {
   const [error, setError] = React.useState('');
   const [xrayTab, setXrayTab] = React.useState('LinkedIn');
 
-  // On mount: fast cache fetch (GET, no AI)
+  // On mount: fast cache fetch. If stale (has record but missing new fields), auto-regenerate.
   React.useEffect(() => {
     api(`/api/jobs/${jobId}/boolean-search`)
       .then(r => r.json())
-      .then(data => { if (data.found) setQueries(data); })
-      .catch(() => {})
-      .finally(() => setLoadingCache(false));
+      .then(data => {
+        if (data.found) {
+          setQueries(data);
+          setLoadingCache(false);
+        } else if (data.stale) {
+          // Has old record missing new fields → silently regenerate, show spinner
+          api(`/api/jobs/${jobId}/boolean-search`, { method: 'POST' })
+            .then(r => r.json())
+            .then(fresh => { if (fresh.found) setQueries(fresh); })
+            .catch(() => {})
+            .finally(() => setLoadingCache(false));
+        } else {
+          setLoadingCache(false);
+        }
+      })
+      .catch(() => setLoadingCache(false));
   }, [jobId]);
 
   // Button handler: POST → generate + store

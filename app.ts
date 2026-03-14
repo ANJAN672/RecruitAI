@@ -37,6 +37,18 @@ function parseSkills(raw: string): string[] {
   try { return JSON.parse(raw || "[]"); } catch { return []; }
 }
 
+// All fields required in a complete boolean search record.
+// If any are missing from cache, GET returns found:false → forces fresh POST regeneration.
+const BOOLEAN_REQUIRED_FIELDS = [
+  "linkedin_boolean", "naukri_keywords",
+  "indeed_boolean", "dice_boolean", "careerbuilder_boolean", "monster_boolean",
+  "xray_linkedin", "xray_naukri", "xray_indeed", "xray_dice", "xray_careerbuilder", "xray_monster",
+];
+
+function isCacheComplete(q: any): boolean {
+  return BOOLEAN_REQUIRED_FIELDS.every(f => typeof q[f] === "string" && q[f].trim() !== "");
+}
+
 function buildSearchResponse(q: any) {
   return {
     found: true,
@@ -155,13 +167,15 @@ app.get("/api/jobs/:id/boolean-search", requireAuth, async (req: any, res) => {
     .limit(1)
     .single();
 
-  if (!cached?.query) return res.json({ found: false });
+  if (!cached?.query) return res.json({ found: false, stale: false });
 
   try {
     const parsed = JSON.parse(cached.query);
+    // Cache exists but missing new fields → stale: true → UI auto-regenerates silently
+    if (!isCacheComplete(parsed)) return res.json({ found: false, stale: true });
     return res.json(buildSearchResponse(parsed));
   } catch {
-    return res.json({ found: false });
+    return res.json({ found: false, stale: false });
   }
 });
 
