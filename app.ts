@@ -622,13 +622,27 @@ Each entry must be a real institution with a verifiable official URL. Focus on i
     let parsed: any = {};
     try { parsed = JSON.parse(rawContent); } catch { throw new Error("Invalid JSON"); }
 
-    supabase.from("market_intelligence").insert({
+    // Filter out edtech platforms the model keeps returning despite instructions
+    const BANNED_PROVIDERS = [
+      "udemy", "coursera", "edx", "pluralsight", "linkedin learning", "skillshare",
+      "alison", "khan academy", "freecodecamp", "codecademy", "scrimba", "odin project",
+      "guru99", "w3schools", "test automation university", "simplilearn", "great learning",
+      "unacademy", "byju", "whitehat", "coding ninjas",
+    ];
+    if (Array.isArray(parsed.training)) {
+      parsed.training = parsed.training.filter((t: any) => {
+        const provider = (t.provider || "").toLowerCase();
+        const name = (t.name || "").toLowerCase();
+        return !BANNED_PROVIDERS.some(b => provider.includes(b) || name.includes(b));
+      });
+    }
+
+    const { error: insertErr } = await supabase.from("market_intelligence").insert({
       job_id: parseInt(req.params.id),
       user_id: req.user.id,
       data: parsed,
-    }).then(({ error }) => {
-      if (error) console.warn("market_intelligence insert skipped:", error.message);
     });
+    if (insertErr) console.warn("market_intelligence insert failed:", insertErr.message);
 
     res.json({ found: true, ...parsed });
   } catch (err) {
