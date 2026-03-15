@@ -1,6 +1,5 @@
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
-import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -10,74 +9,32 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-function getAI() {
-  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-}
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
-
-// Fallback to OpenRouter when Gemini rate-limits (429) or errors out
-async function generateWithFallback(prompt: string, schema: any): Promise<any> {
-  let geminiError: any = null;
-
-  // Try Gemini first
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000); // 45s hard limit (under Vercel's 60s)
-    const response = await getAI().models.generateContent({
-      model: MODEL,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: schema,
-      },
-    });
-    clearTimeout(timeout);
-    const text = response.text || "";
-    if (text) {
-      const parsed = JSON.parse(text);
-      if (parsed && Object.keys(parsed).length > 0) return parsed;
-    }
-    geminiError = new Error("Gemini returned empty response");
-  } catch (err: any) {
-    geminiError = err;
-    const status = err?.status || err?.code || "";
-    console.warn(`Gemini failed (${status}), falling back to OpenRouter...`);
+async function generateJSON(prompt: string): Promise<any> {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "You must respond with valid JSON only. No markdown, no explanation." },
+        { role: "user", content: prompt },
+      ],
+    }),
+    signal: AbortSignal.timeout(50000),
+  });
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    throw new Error(`OpenAI ${res.status}: ${errBody.slice(0, 300)}`);
   }
-
-  // Fallback: OpenRouter
-  try {
-    const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENROUTER_MODEL || "stepfun/step-3.5-flash:free",
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: "You must respond with valid JSON only. No markdown, no explanation." },
-          { role: "user", content: prompt },
-        ],
-      }),
-      signal: AbortSignal.timeout(40000), // 40s timeout
-    });
-    if (!orRes.ok) {
-      const errBody = await orRes.text().catch(() => "");
-      throw new Error(`OpenRouter ${orRes.status}: ${errBody.slice(0, 200)}`);
-    }
-    const orJson = await orRes.json();
-    const content = orJson.choices?.[0]?.message?.content || "";
-    if (!content) throw new Error("OpenRouter returned empty content");
-    // Strip markdown code fences if present
-    const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    return JSON.parse(cleaned);
-  } catch (orErr: any) {
-    console.error("OpenRouter also failed:", orErr.message);
-    // Throw the original Gemini error if both fail
-    throw geminiError || orErr;
-  }
+  const json = await res.json();
+  const content = json.choices?.[0]?.message?.content || "{}";
+  return JSON.parse(content);
 }
 
 async function requireAuth(req: any, res: any, next: any) {
@@ -167,19 +124,8 @@ app.post("/api/jobs", requireAuth, async (req: any, res) => {
       return res.status(400).json({ error: "Title and description are required" });
     }
 
-    const parsed = await generateWithFallback(
-      `Extract structured hiring requirements from this job description. Return JSON with: role (string), experience (string), hard_skills (array of strings), soft_skills (array of strings), certifications (array of strings).\n\nJob Description:\n${description}`,
-      {
-        type: Type.OBJECT,
-        properties: {
-          role: { type: Type.STRING },
-          experience: { type: Type.STRING },
-          hard_skills: { type: Type.ARRAY, items: { type: Type.STRING } },
-          soft_skills: { type: Type.ARRAY, items: { type: Type.STRING } },
-          certifications: { type: Type.ARRAY, items: { type: Type.STRING } },
-        },
-        required: ["role", "experience", "hard_skills", "soft_skills", "certifications"],
-      }
+    const parsed = await generateJSON(
+      `Extract structured hiring requirements from this job description. Return JSON with: role (string), experience (string), hard_skills (array of strings), soft_skills (array of strings), certifications (array of strings).\n\nJob Description:\n${description}`
     );
 
     const { data, error } = await supabase
@@ -260,7 +206,7 @@ app.post("/api/jobs/:id/boolean-search", requireAuth, async (req: any, res) => {
 
     const hardSkills: string[] = JSON.parse(job.hard_skills || "[]");
 
-    const queries = await generateWithFallback(
+    const queries = await generateJSON(
       `You are an expert technical recruiter and sourcing specialist.
 
 Job Details:
@@ -286,25 +232,7 @@ GOOGLE X-RAY SEARCHES (for finding profiles/resumes via Google):
 11. xray_careerbuilder: site:careerbuilder.com then role + 1-2 skills in quotes. Do NOT use /resume path.
 12. xray_monster: site:monster.com then role + 1-2 skills in quotes.
 
-Return JSON with exactly these 12 string fields: linkedin_boolean, naukri_keywords, indeed_boolean, dice_boolean, careerbuilder_boolean, monster_boolean, xray_linkedin, xray_naukri, xray_indeed, xray_dice, xray_careerbuilder, xray_monster.`,
-      {
-        type: Type.OBJECT,
-        properties: {
-          linkedin_boolean: { type: Type.STRING },
-          naukri_keywords: { type: Type.STRING },
-          indeed_boolean: { type: Type.STRING },
-          dice_boolean: { type: Type.STRING },
-          careerbuilder_boolean: { type: Type.STRING },
-          monster_boolean: { type: Type.STRING },
-          xray_linkedin: { type: Type.STRING },
-          xray_naukri: { type: Type.STRING },
-          xray_indeed: { type: Type.STRING },
-          xray_dice: { type: Type.STRING },
-          xray_careerbuilder: { type: Type.STRING },
-          xray_monster: { type: Type.STRING },
-        },
-        required: ["linkedin_boolean", "naukri_keywords", "indeed_boolean", "dice_boolean", "careerbuilder_boolean", "monster_boolean", "xray_linkedin", "xray_naukri", "xray_indeed", "xray_dice", "xray_careerbuilder", "xray_monster"],
-      }
+Return JSON with exactly these 12 string fields: linkedin_boolean, naukri_keywords, indeed_boolean, dice_boolean, careerbuilder_boolean, monster_boolean, xray_linkedin, xray_naukri, xray_indeed, xray_dice, xray_careerbuilder, xray_monster.`
     );
 
     await supabase.from("boolean_searches").insert({
@@ -352,23 +280,10 @@ app.post("/api/jobs/:id/knowledge", requireAuth, async (req: any, res) => {
 
     const skillsList = parseSkills(job.hard_skills).slice(0, 6).join(", ");
 
-    const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENROUTER_MODEL || "stepfun/step-3.5-flash:free",
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: "You are a senior technical recruiter creating interview guides for non-technical HR recruiters. Always respond with valid JSON only.",
-          },
-          {
-            role: "user",
-            content: `Create an interview guide for this role.
+    const parsed = await generateJSON(
+      `You are a senior technical recruiter creating interview guides for non-technical HR recruiters.
+
+Create an interview guide for this role.
 
 Role: ${job.role}
 Key Skills: ${skillsList}
@@ -389,26 +304,8 @@ Return a JSON object with exactly this structure:
   ]
 }
 
-Generate exactly 4 concepts and 4 interview questions. Every expected_answer MUST be written as a natural first-person candidate response. Do NOT write it as a recruiter evaluation guide. Never output empty strings.`,
-          },
-        ],
-      }),
-    });
-
-    if (!orRes.ok) {
-      const errText = await orRes.text();
-      throw new Error(`OpenRouter error ${orRes.status}: ${errText}`);
-    }
-
-    const orJson = await orRes.json();
-    const rawContent = orJson.choices?.[0]?.message?.content || "{}";
-
-    let parsed: any = {};
-    try {
-      parsed = JSON.parse(rawContent);
-    } catch {
-      throw new Error("Invalid JSON from OpenRouter");
-    }
+Generate exactly 4 concepts and 4 interview questions. Every expected_answer MUST be written as a natural first-person candidate response. Do NOT write it as a recruiter evaluation guide. Never output empty strings.`
+    );
 
     if (Array.isArray(parsed.interview_questions)) {
       parsed.interview_questions = parsed.interview_questions.map((q: any) => ({
@@ -451,7 +348,7 @@ app.post("/api/jobs/:id/candidates", requireAuth, async (req: any, res) => {
 
     if (jobErr || !job) return res.status(404).json({ error: "Job not found" });
 
-    const parsed = await generateWithFallback(
+    const parsed = await generateJSON(
       `Analyze this candidate profile against the job requirements. Provide both a technical match assessment AND a behavioral/cultural analysis.
 
 Job Requirements:
@@ -466,18 +363,7 @@ ${profile_text}
 1. Extract skills, summarize experience, score match 0-100, and give 1-2 sentence reasoning.
 2. Write a behavioral_summary: Analyze communication style, leadership indicators, collaboration signals, career trajectory, red flags, and cultural fit signals visible in the profile text. 3-5 sentences.
 
-Return JSON with fields: skills (array of strings), experience (string), match_score (integer 0-100), match_reasoning (string), behavioral_summary (string).`,
-      {
-        type: Type.OBJECT,
-        properties: {
-          skills: { type: Type.ARRAY, items: { type: Type.STRING } },
-          experience: { type: Type.STRING },
-          match_score: { type: Type.INTEGER },
-          match_reasoning: { type: Type.STRING },
-          behavioral_summary: { type: Type.STRING },
-        },
-        required: ["skills", "experience", "match_score", "match_reasoning", "behavioral_summary"],
-      }
+Return JSON with fields: skills (array of strings), experience (string), match_score (integer 0-100), match_reasoning (string), behavioral_summary (string).`
     );
 
     const { data, error } = await supabase
@@ -559,7 +445,7 @@ app.post("/api/candidates/:id/report", requireAuth, async (req: any, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const parsed = await generateWithFallback(
+    const parsed = await generateJSON(
       `Convert these raw interview notes into a structured evaluation report.
 
 Notes:
@@ -567,16 +453,7 @@ ${notes}
 
 Produce a professional summary of strengths, weaknesses, and a clear recommendation.
 
-Return JSON with fields: strengths (string), weaknesses (string), recommendation (string).`,
-      {
-        type: Type.OBJECT,
-        properties: {
-          strengths: { type: Type.STRING },
-          weaknesses: { type: Type.STRING },
-          recommendation: { type: Type.STRING },
-        },
-        required: ["strengths", "weaknesses", "recommendation"],
-      }
+Return JSON with fields: strengths (string), weaknesses (string), recommendation (string).`
     );
 
     const { data, error } = await supabase
@@ -651,23 +528,10 @@ app.post("/api/jobs/:id/market-intelligence", requireAuth, async (req: any, res)
 
     const skillsList = parseSkills(job.hard_skills).slice(0, 8).join(", ");
 
-    const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENROUTER_MODEL || "stepfun/step-3.5-flash:free",
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: "You are a compensation and HR market research specialist. Always respond with valid JSON only.",
-          },
-          {
-            role: "user",
-            content: `Generate market intelligence for this role.
+    const parsed = await generateJSON(
+      `You are a compensation and HR market research specialist.
+
+Generate market intelligence for this role.
 
 Role: ${job.role}
 Experience Required: ${job.experience}
@@ -703,18 +567,8 @@ REQUIRED — only these types of institutions:
 - Indian: IIT Bombay, IIT Delhi, IIT Madras, IIT Kanpur, NIT Trichy, CDAC (Centre for Development of Advanced Computing), NASSCOM FutureSkills Prime, CSI (Computer Society of India), IETE, C-DAC ACTS Pune
 - Global: MIT (Massachusetts Institute of Technology), Stanford University, Carnegie Mellon University, Linux Foundation, IEEE (Institute of Electrical and Electronics Engineers), ACM (Association for Computing Machinery), The Open Group, Red Hat Academy, CompTIA, PMI (Project Management Institute)
 
-Each entry must be a real institution with a verifiable official URL. Focus on institutions that have programs or certifications directly relevant to: ${skillsList}`,
-          },
-        ],
-      }),
-    });
-
-    if (!orRes.ok) throw new Error(`OpenRouter error ${orRes.status}`);
-    const orJson = await orRes.json();
-    const rawContent = orJson.choices?.[0]?.message?.content || "{}";
-
-    let parsed: any = {};
-    try { parsed = JSON.parse(rawContent); } catch { throw new Error("Invalid JSON"); }
+Each entry must be a real institution with a verifiable official URL. Focus on institutions that have programs or certifications directly relevant to: ${skillsList}`
+    );
 
     // Filter out edtech platforms the model keeps returning despite instructions
     const BANNED_PROVIDERS = [
