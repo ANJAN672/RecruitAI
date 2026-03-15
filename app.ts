@@ -16,10 +16,14 @@ function getAI() {
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
 
-// Fallback to OpenRouter when Gemini rate-limits (429)
+// Fallback to OpenRouter when Gemini rate-limits (429) or errors out
 async function generateWithFallback(prompt: string, schema: any): Promise<any> {
+  let geminiError: any = null;
+
   // Try Gemini first
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000); // 45s hard limit (under Vercel's 60s)
     const response = await getAI().models.generateContent({
       model: MODEL,
       contents: prompt,
@@ -28,31 +32,52 @@ async function generateWithFallback(prompt: string, schema: any): Promise<any> {
         responseSchema: schema,
       },
     });
-    return JSON.parse(response.text || "{}");
+    clearTimeout(timeout);
+    const text = response.text || "";
+    if (text) {
+      const parsed = JSON.parse(text);
+      if (parsed && Object.keys(parsed).length > 0) return parsed;
+    }
+    geminiError = new Error("Gemini returned empty response");
   } catch (err: any) {
-    if (err?.status !== 429) throw err;
-    console.warn("Gemini rate-limited, falling back to OpenRouter...");
+    geminiError = err;
+    const status = err?.status || err?.code || "";
+    console.warn(`Gemini failed (${status}), falling back to OpenRouter...`);
   }
 
   // Fallback: OpenRouter
-  const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: process.env.OPENROUTER_MODEL || "stepfun/step-3.5-flash:free",
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: "Respond with valid JSON only." },
-        { role: "user", content: prompt },
-      ],
-    }),
-  });
-  if (!orRes.ok) throw new Error(`OpenRouter error ${orRes.status}`);
-  const orJson = await orRes.json();
-  return JSON.parse(orJson.choices?.[0]?.message?.content || "{}");
+  try {
+    const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_MODEL || "stepfun/step-3.5-flash:free",
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: "You must respond with valid JSON only. No markdown, no explanation." },
+          { role: "user", content: prompt },
+        ],
+      }),
+      signal: AbortSignal.timeout(40000), // 40s timeout
+    });
+    if (!orRes.ok) {
+      const errBody = await orRes.text().catch(() => "");
+      throw new Error(`OpenRouter ${orRes.status}: ${errBody.slice(0, 200)}`);
+    }
+    const orJson = await orRes.json();
+    const content = orJson.choices?.[0]?.message?.content || "";
+    if (!content) throw new Error("OpenRouter returned empty content");
+    // Strip markdown code fences if present
+    const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    return JSON.parse(cleaned);
+  } catch (orErr: any) {
+    console.error("OpenRouter also failed:", orErr.message);
+    // Throw the original Gemini error if both fail
+    throw geminiError || orErr;
+  }
 }
 
 async function requireAuth(req: any, res: any, next: any) {

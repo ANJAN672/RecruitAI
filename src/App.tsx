@@ -137,6 +137,18 @@ async function api(url: string, options: RequestInit = {}): Promise<Response> {
   });
 }
 
+// Safely extract JSON from API responses — handles 504 HTML pages, empty bodies, etc.
+async function safeJson(res: Response): Promise<any> {
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    const msg = res.status === 504 ? 'Request timed out — please try again.'
+              : res.status === 502 ? 'Server error — please try again.'
+              : `Server error (${res.status})`;
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
 function parseJSON<T>(str: string, fallback: T): T {
   try { return JSON.parse(str); } catch { return fallback; }
 }
@@ -523,7 +535,7 @@ function Dashboard() {
         method: 'POST',
         body: JSON.stringify({ title: newJobTitle, description: newJobDesc }),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) { setCreateError(data.error || 'Failed to create job.'); return; }
       setJobs(prev => [data, ...prev]);
       setIsCreating(false);
@@ -689,7 +701,7 @@ function SourcingTab({ jobId }: { jobId: string }) {
     setError('');
     try {
       const res = await api(`/api/jobs/${jobId}/boolean-search`, { method: 'POST' });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data.error || 'Generation failed');
       setQueries(data);
     } catch (err: any) {
@@ -902,7 +914,7 @@ function MarketIntelligenceTab({ jobId }: { jobId: string }) {
     setError('');
     try {
       const res = await api(`/api/jobs/${jobId}/market-intelligence`, { method: 'POST' });
-      const json = await res.json();
+      const json = await safeJson(res);
       if (!res.ok) throw new Error(json.error || 'Failed');
       setData(json);
     } catch (e: any) {
@@ -1070,7 +1082,7 @@ function JobDetails() {
     setKnowledgeError('');
     try {
       const res = await api(`/api/jobs/${id}/knowledge`, { method: 'POST' });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data.error || 'Failed');
       setKnowledge(data);
     } catch (err: any) {
@@ -1089,7 +1101,7 @@ function JobDetails() {
         method: 'POST',
         body: JSON.stringify({ name: candidateName, profile_url: candidateUrl, twitter_url: candidateTwitter, profile_text: candidateProfile }),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) { setIngestError(data.error || 'Failed to ingest candidate.'); return; }
       setCandidates(prev => [...prev, data].sort((a, b) => b.match_score - a.match_score));
       setIsAddingCandidate(false);
@@ -1388,7 +1400,7 @@ function CandidateDetails() {
         method: 'POST',
         body: JSON.stringify({ notes: interviewNotes }),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) { setReportError(data.error || 'Failed to generate report.'); return; }
       setReports(prev => [data, ...prev]);
       setInterviewNotes('');
