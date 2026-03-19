@@ -1,0 +1,18 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/candidates/[id]/report/route": "app/api/candidates/[id]/report/route.js",
+  "/api/candidates/[id]/route": "app/api/candidates/[id]/route.js",
+  "/api/candidates/[id]/reports/route": "app/api/candidates/[id]/reports/route.js",
+  "/api/jobs/[id]/candidates/route": "app/api/jobs/[id]/candidates/route.js",
+  "/api/jobs/[id]/knowledge/route": "app/api/jobs/[id]/knowledge/route.js",
+  "/api/jobs/[id]/route": "app/api/jobs/[id]/route.js",
+  "/api/jobs/[id]/boolean-search/route": "app/api/jobs/[id]/boolean-search/route.js",
+  "/api/jobs/route": "app/api/jobs/route.js",
+  "/api/models/route": "app/api/models/route.js",
+  "/api/upload/parse/route": "app/api/upload/parse/route.js",
+  "/auth/callback/route": "app/auth/callback/route.js",
+  "/auth/page": "app/auth/page.js",
+  "/candidates/[id]/page": "app/candidates/[id]/page.js",
+  "/jobs/[id]/page": "app/jobs/[id]/page.js",
+  "/page": "app/page.js"
+}
