@@ -1,6 +1,7 @@
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import * as XLSX from "xlsx";
 
 dotenv.config();
 
@@ -54,12 +55,21 @@ async function requireAuth(req: any, res: any, next: any) {
   next();
 }
 
+// Resolve public_id (UUID from URL) to internal job row
+async function resolveJob(publicId: string, userId: string) {
+  const { data } = await supabase
+    .from("jobs")
+    .select("*")
+    .eq("public_id", publicId)
+    .eq("user_id", userId)
+    .single();
+  return data;
+}
+
 function parseSkills(raw: string): string[] {
   try { return JSON.parse(raw || "[]"); } catch { return []; }
 }
 
-// All fields required in a complete boolean search record.
-// If any are missing from cache, GET returns found:false → forces fresh POST regeneration.
 const BOOLEAN_REQUIRED_FIELDS = [
   "linkedin_boolean", "naukri_keywords",
   "indeed_boolean", "dice_boolean", "careerbuilder_boolean", "monster_boolean",
@@ -70,8 +80,6 @@ function isCacheComplete(q: any): boolean {
   return BOOLEAN_REQUIRED_FIELDS.every(f => typeof q[f] === "string" && q[f].trim() !== "");
 }
 
-// Server-side enforcement: limit AND groups and OR terms so platform searches always work.
-// AI prompts request limits but sometimes ignore them — this guarantees compliance.
 function sanitizeBoolean(query: string, maxAndGroups = 2, maxOrTerms = 3): string {
   if (!query) return query;
   const groups = query.split(/\s+AND\s+/i);
@@ -115,6 +123,30 @@ app.get("/api/config", (_req, res) => {
   });
 });
 
+// ── User Profile ──────────────────────────────────────────────────────
+app.post("/api/profile", requireAuth, async (req: any, res) => {
+  try {
+    const { full_name, role } = req.body;
+    const validRole = role === "candidate" ? "candidate" : "recruiter";
+
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .upsert({
+        id: req.user.id,
+        full_name: full_name || "",
+        role: validRole,
+      }, { onConflict: "id" })
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error("Error creating profile:", err);
+    res.status(500).json({ error: "Failed to create profile" });
+  }
+});
+
 // ── Jobs ──────────────────────────────────────────────────────────────
 
 app.post("/api/jobs", requireAuth, async (req: any, res) => {
@@ -152,36 +184,47 @@ app.post("/api/jobs", requireAuth, async (req: any, res) => {
 });
 
 app.get("/api/jobs", requireAuth, async (req: any, res) => {
-  const { data, error } = await supabase
+  const { data: jobs, error } = await supabase
     .from("jobs")
     .select("*")
     .eq("user_id", req.user.id)
     .order("created_at", { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+
+  // Enrich with candidate counts and top match scores
+  const enriched = await Promise.all((jobs || []).map(async (job: any) => {
+    const { data: candidates } = await supabase
+      .from("candidates")
+      .select("match_score")
+      .eq("job_id", job.id)
+      .order("match_score", { ascending: false });
+
+    return {
+      ...job,
+      candidate_count: candidates?.length || 0,
+      top_match_score: candidates?.[0]?.match_score || 0,
+    };
+  }));
+
+  res.json(enriched);
 });
 
 app.get("/api/jobs/:id", requireAuth, async (req: any, res) => {
-  const { data, error } = await supabase
-    .from("jobs")
-    .select("*")
-    .eq("id", req.params.id)
-    .eq("user_id", req.user.id)
-    .single();
-  if (error || !data) return res.status(404).json({ error: "Job not found" });
-  res.json(data);
+  const job = await resolveJob(req.params.id, req.user.id);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+  res.json(job);
 });
 
 // ── Sourcing ─────────────────────────────────────────────────────────
 
 app.get("/api/jobs/:id/boolean-search", requireAuth, async (req: any, res) => {
-  const { data: job } = await supabase.from("jobs").select("id").eq("id", req.params.id).eq("user_id", req.user.id).single();
+  const job = await resolveJob(req.params.id, req.user.id);
   if (!job) return res.status(404).json({ error: "Job not found" });
 
   const { data: cached } = await supabase
     .from("boolean_searches")
     .select("query")
-    .eq("job_id", req.params.id)
+    .eq("job_id", job.id)
     .eq("user_id", req.user.id)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -191,7 +234,6 @@ app.get("/api/jobs/:id/boolean-search", requireAuth, async (req: any, res) => {
 
   try {
     const parsed = JSON.parse(cached.query);
-    // Cache exists but missing new fields → stale: true → UI auto-regenerates silently
     if (!isCacheComplete(parsed)) return res.json({ found: false, stale: true });
     return res.json(buildSearchResponse(parsed));
   } catch {
@@ -201,8 +243,8 @@ app.get("/api/jobs/:id/boolean-search", requireAuth, async (req: any, res) => {
 
 app.post("/api/jobs/:id/boolean-search", requireAuth, async (req: any, res) => {
   try {
-    const { data: job, error } = await supabase.from("jobs").select("*").eq("id", req.params.id).eq("user_id", req.user.id).single();
-    if (error || !job) return res.status(404).json({ error: "Job not found" });
+    const job = await resolveJob(req.params.id, req.user.id);
+    if (!job) return res.status(404).json({ error: "Job not found" });
 
     const hardSkills: string[] = JSON.parse(job.hard_skills || "[]");
 
@@ -236,7 +278,7 @@ Return JSON with exactly these 12 string fields: linkedin_boolean, naukri_keywor
     );
 
     await supabase.from("boolean_searches").insert({
-      job_id: parseInt(req.params.id),
+      job_id: job.id,
       user_id: req.user.id,
       query: JSON.stringify(queries),
     });
@@ -251,20 +293,19 @@ Return JSON with exactly these 12 string fields: linkedin_boolean, naukri_keywor
 // ── Knowledge Assistant ───────────────────────────────────────────────
 
 app.get("/api/jobs/:id/knowledge", requireAuth, async (req: any, res) => {
-  const { data: job } = await supabase.from("jobs").select("id").eq("id", req.params.id).eq("user_id", req.user.id).single();
+  const job = await resolveJob(req.params.id, req.user.id);
   if (!job) return res.status(404).json({ error: "Job not found" });
 
   const { data: cached } = await supabase
     .from("knowledge_guides")
     .select("concepts, interview_questions")
-    .eq("job_id", req.params.id)
+    .eq("job_id", job.id)
     .eq("user_id", req.user.id)
     .order("created_at", { ascending: false })
     .limit(1)
     .single();
 
   if (!cached?.concepts) return res.json({ found: false, stale: false });
-  // Validate structure — concepts and interview_questions must be non-empty arrays
   const valid =
     Array.isArray(cached.concepts) && cached.concepts.length > 0 &&
     Array.isArray(cached.interview_questions) && cached.interview_questions.length > 0 &&
@@ -275,8 +316,8 @@ app.get("/api/jobs/:id/knowledge", requireAuth, async (req: any, res) => {
 
 app.post("/api/jobs/:id/knowledge", requireAuth, async (req: any, res) => {
   try {
-    const { data: job, error } = await supabase.from("jobs").select("*").eq("id", req.params.id).eq("user_id", req.user.id).single();
-    if (error || !job) return res.status(404).json({ error: "Job not found" });
+    const job = await resolveJob(req.params.id, req.user.id);
+    if (!job) return res.status(404).json({ error: "Job not found" });
 
     const skillsList = parseSkills(job.hard_skills).slice(0, 6).join(", ");
 
@@ -315,7 +356,7 @@ Generate exactly 4 concepts and 4 interview questions. Every expected_answer MUS
     }
 
     await supabase.from("knowledge_guides").insert({
-      job_id: parseInt(req.params.id),
+      job_id: job.id,
       user_id: req.user.id,
       concepts: parsed.concepts ?? [],
       interview_questions: parsed.interview_questions ?? [],
@@ -332,21 +373,14 @@ Generate exactly 4 concepts and 4 interview questions. Every expected_answer MUS
 
 app.post("/api/jobs/:id/candidates", requireAuth, async (req: any, res) => {
   try {
-    const jobId = req.params.id;
     const { name, profile_url, twitter_url, profile_text } = req.body;
 
     if (!name || !profile_text) {
       return res.status(400).json({ error: "Name and profile text are required" });
     }
 
-    const { data: job, error: jobErr } = await supabase
-      .from("jobs")
-      .select("*")
-      .eq("id", jobId)
-      .eq("user_id", req.user.id)
-      .single();
-
-    if (jobErr || !job) return res.status(404).json({ error: "Job not found" });
+    const job = await resolveJob(req.params.id, req.user.id);
+    if (!job) return res.status(404).json({ error: "Job not found" });
 
     const parsed = await generateJSON(
       `Analyze this candidate profile against the job requirements. Provide both a technical match assessment AND a behavioral/cultural analysis.
@@ -362,15 +396,19 @@ ${profile_text}
 
 1. Extract skills, summarize experience, score match 0-100, and give 1-2 sentence reasoning.
 2. Write a behavioral_summary: Analyze communication style, leadership indicators, collaboration signals, career trajectory, red flags, and cultural fit signals visible in the profile text. 3-5 sentences.
+3. Extract the candidate's email address if visible in the profile text.
 
-Return JSON with fields: skills (array of strings), experience (string), match_score (integer 0-100), match_reasoning (string), behavioral_summary (string).`
+Return JSON with fields: skills (array of strings), experience (string), match_score (integer 0-100), match_reasoning (string), behavioral_summary (string), email (string, empty string if not found).`
     );
+
+    const candidateEmail = req.body.email || parsed.email || "";
 
     const { data, error } = await supabase
       .from("candidates")
       .insert({
-        job_id: parseInt(jobId),
+        job_id: job.id,
         name,
+        email: candidateEmail,
         profile_url: profile_url || "",
         twitter_url: twitter_url || "",
         profile_text,
@@ -392,19 +430,13 @@ Return JSON with fields: skills (array of strings), experience (string), match_s
 });
 
 app.get("/api/jobs/:id/candidates", requireAuth, async (req: any, res) => {
-  const { data: job } = await supabase
-    .from("jobs")
-    .select("id")
-    .eq("id", req.params.id)
-    .eq("user_id", req.user.id)
-    .single();
-
+  const job = await resolveJob(req.params.id, req.user.id);
   if (!job) return res.status(404).json({ error: "Job not found" });
 
   const { data, error } = await supabase
     .from("candidates")
     .select("*")
-    .eq("job_id", req.params.id)
+    .eq("job_id", job.id)
     .order("match_score", { ascending: false });
 
   if (error) return res.status(500).json({ error: error.message });
@@ -414,7 +446,7 @@ app.get("/api/jobs/:id/candidates", requireAuth, async (req: any, res) => {
 app.get("/api/candidates/:id", requireAuth, async (req: any, res) => {
   const { data, error } = await supabase
     .from("candidates")
-    .select("*, jobs!inner(user_id)")
+    .select("*, jobs!inner(user_id, public_id)")
     .eq("id", req.params.id)
     .single();
 
@@ -423,8 +455,118 @@ app.get("/api/candidates/:id", requireAuth, async (req: any, res) => {
     return res.status(403).json({ error: "Forbidden" });
   }
 
-  const { jobs: _jobs, ...candidate } = data as any;
-  res.json(candidate);
+  const { jobs, ...candidate } = data as any;
+  res.json({ ...candidate, job_public_id: jobs.public_id });
+});
+
+// ── Excel Export ──────────────────────────────────────────────────────
+
+app.get("/api/jobs/:id/candidates/export", requireAuth, async (req: any, res) => {
+  try {
+    const job = await resolveJob(req.params.id, req.user.id);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+
+    const { data: candidates } = await supabase
+      .from("candidates")
+      .select("*")
+      .eq("job_id", job.id)
+      .order("match_score", { ascending: false });
+
+    // Get submissions for status
+    const { data: subs } = await supabase
+      .from("candidate_submissions")
+      .select("*")
+      .eq("job_id", job.id)
+      .eq("user_id", req.user.id);
+
+    const subMap = new Map((subs || []).map((s: any) => [s.candidate_id, s]));
+
+    const rows = (candidates || []).map((c: any, i: number) => {
+      const sub = subMap.get(c.id);
+      return {
+        Rank: i + 1,
+        Name: c.name,
+        "Match Score (%)": c.match_score,
+        Skills: parseSkills(c.skills).join(", "),
+        Experience: c.experience || "",
+        "Match Reasoning": c.match_reasoning || "",
+        "Behavioral Summary": c.behavioral_summary || "",
+        Status: sub?.status || "sourced",
+        "LinkedIn URL": c.profile_url || "",
+        "Added On": new Date(c.created_at).toLocaleDateString("en-IN"),
+      };
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // Set column widths
+    ws["!cols"] = [
+      { wch: 6 }, { wch: 25 }, { wch: 14 }, { wch: 40 }, { wch: 40 },
+      { wch: 50 }, { wch: 50 }, { wch: 12 }, { wch: 35 }, { wch: 12 },
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, "Candidates");
+    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="candidates-${job.title.replace(/[^a-zA-Z0-9]/g, "_")}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.error("Error exporting candidates:", err);
+    res.status(500).json({ error: "Failed to export" });
+  }
+});
+
+// ── Candidate Notes (persisted to DB) ─────────────────────────────────
+
+app.get("/api/candidates/:id/notes", requireAuth, async (req: any, res) => {
+  const { data: candidate } = await supabase
+    .from("candidates")
+    .select("*, jobs!inner(user_id)")
+    .eq("id", req.params.id)
+    .single();
+
+  if (!candidate || (candidate.jobs as any).user_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const { data } = await supabase
+    .from("candidate_notes")
+    .select("notes")
+    .eq("candidate_id", parseInt(req.params.id))
+    .eq("user_id", req.user.id)
+    .single();
+
+  res.json({ notes: data?.notes || "" });
+});
+
+app.post("/api/candidates/:id/notes", requireAuth, async (req: any, res) => {
+  const { notes } = req.body;
+
+  const { data: candidate } = await supabase
+    .from("candidates")
+    .select("*, jobs!inner(user_id)")
+    .eq("id", req.params.id)
+    .single();
+
+  if (!candidate || (candidate.jobs as any).user_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const { error } = await supabase
+    .from("candidate_notes")
+    .upsert({
+      candidate_id: parseInt(req.params.id),
+      user_id: req.user.id,
+      notes: notes || "",
+    }, { onConflict: "candidate_id,user_id" });
+
+  if (error) {
+    console.error("Error saving notes:", error);
+    return res.status(500).json({ error: "Failed to save notes" });
+  }
+  res.json({ notes: notes || "" });
 });
 
 // ── Interview Reports ──────────────────────────────────────────────────
@@ -498,23 +640,78 @@ app.get("/api/candidates/:id/reports", requireAuth, async (req: any, res) => {
   res.json(data || []);
 });
 
+// ── Submission Tracker ────────────────────────────────────────────────
+
+app.get("/api/jobs/:id/submissions", requireAuth, async (req: any, res) => {
+  const job = await resolveJob(req.params.id, req.user.id);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+
+  const { data, error } = await supabase
+    .from("candidate_submissions")
+    .select("*")
+    .eq("job_id", job.id)
+    .eq("user_id", req.user.id);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+app.post("/api/jobs/:id/submissions", requireAuth, async (req: any, res) => {
+  try {
+    const { candidate_id, status, client_name, notes } = req.body;
+    if (!candidate_id || !status) {
+      return res.status(400).json({ error: "candidate_id and status are required" });
+    }
+
+    const validStatuses = ["sourced", "screened", "submitted", "interview", "offered", "joined", "rejected"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
+    const job = await resolveJob(req.params.id, req.user.id);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+
+    const submittedAt = status === "submitted" ? new Date().toISOString() : null;
+
+    const { data, error } = await supabase
+      .from("candidate_submissions")
+      .upsert({
+        candidate_id: parseInt(candidate_id),
+        job_id: job.id,
+        user_id: req.user.id,
+        status,
+        client_name: client_name || "",
+        notes: notes || "",
+        submitted_at: submittedAt,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "candidate_id,job_id,user_id" })
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error("Error updating submission:", err);
+    res.status(500).json({ error: "Failed to update submission" });
+  }
+});
+
 // ── Market Intelligence ───────────────────────────────────────────────
 
 app.get("/api/jobs/:id/market-intelligence", requireAuth, async (req: any, res) => {
-  const { data: job } = await supabase.from("jobs").select("id").eq("id", req.params.id).eq("user_id", req.user.id).single();
+  const job = await resolveJob(req.params.id, req.user.id);
   if (!job) return res.status(404).json({ error: "Job not found" });
 
   const { data: cached } = await supabase
     .from("market_intelligence")
     .select("data")
-    .eq("job_id", req.params.id)
+    .eq("job_id", job.id)
     .eq("user_id", req.user.id)
     .order("created_at", { ascending: false })
     .limit(1)
     .single();
 
   if (!cached?.data) return res.json({ found: false, stale: false });
-  // Validate structure — salary, demand, training must all be present
   const d = cached.data;
   const valid = d.salary?.india && d.salary?.us && d.demand && Array.isArray(d.training) && d.training.length > 0;
   if (!valid) return res.json({ found: false, stale: true });
@@ -523,8 +720,8 @@ app.get("/api/jobs/:id/market-intelligence", requireAuth, async (req: any, res) 
 
 app.post("/api/jobs/:id/market-intelligence", requireAuth, async (req: any, res) => {
   try {
-    const { data: job, error } = await supabase.from("jobs").select("*").eq("id", req.params.id).eq("user_id", req.user.id).single();
-    if (error || !job) return res.status(404).json({ error: "Job not found" });
+    const job = await resolveJob(req.params.id, req.user.id);
+    if (!job) return res.status(404).json({ error: "Job not found" });
 
     const skillsList = parseSkills(job.hard_skills).slice(0, 8).join(", ");
 
@@ -570,7 +767,6 @@ REQUIRED — only these types of institutions:
 Each entry must be a real institution with a verifiable official URL. Focus on institutions that have programs or certifications directly relevant to: ${skillsList}`
     );
 
-    // Filter out edtech platforms the model keeps returning despite instructions
     const BANNED_PROVIDERS = [
       "udemy", "coursera", "edx", "pluralsight", "linkedin learning", "skillshare",
       "alison", "khan academy", "freecodecamp", "codecademy", "scrimba", "odin project",
@@ -586,16 +782,64 @@ Each entry must be a real institution with a verifiable official URL. Focus on i
     }
 
     const { error: insertErr } = await supabase.from("market_intelligence").insert({
-      job_id: parseInt(req.params.id),
+      job_id: job.id,
       user_id: req.user.id,
       data: parsed,
     });
-    if (insertErr) console.warn("market_intelligence insert failed:", insertErr.message);
+    if (insertErr) {
+      console.error("market_intelligence insert failed:", insertErr.message);
+    }
 
     res.json({ found: true, ...parsed });
   } catch (err) {
     console.error("Error generating market intelligence:", err);
     res.status(500).json({ error: "Failed to generate market intelligence" });
+  }
+});
+
+// ── Candidate Portal ──────────────────────────────────────────────────
+
+app.get("/api/candidate-portal/applications", requireAuth, async (req: any, res) => {
+  try {
+    const email = req.user.email;
+    if (!email) return res.json([]);
+
+    // Find candidates linked to this user's email (exact match on email column)
+    const { data: candidates } = await supabase
+      .from("candidates")
+      .select("*, jobs!inner(title, role, experience, user_id)")
+      .eq("email", email);
+
+    if (!candidates || candidates.length === 0) return res.json([]);
+
+    // Get submission statuses
+    const candidateIds = candidates.map((c: any) => c.id);
+    const { data: subs } = await supabase
+      .from("candidate_submissions")
+      .select("*")
+      .in("candidate_id", candidateIds);
+
+    const subMap = new Map((subs || []).map((s: any) => [s.candidate_id, s]));
+
+    const applications = candidates.map((c: any) => {
+      const sub = subMap.get(c.id);
+      return {
+        id: c.id,
+        job_title: (c.jobs as any).title,
+        job_role: (c.jobs as any).role,
+        job_experience: (c.jobs as any).experience,
+        match_score: c.match_score,
+        match_reasoning: c.match_reasoning,
+        behavioral_summary: c.behavioral_summary,
+        submission_status: sub?.status || null,
+        created_at: c.created_at,
+      };
+    });
+
+    res.json(applications);
+  } catch (err) {
+    console.error("Error fetching candidate applications:", err);
+    res.json([]);
   }
 });
 
