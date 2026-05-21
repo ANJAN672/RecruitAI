@@ -30,6 +30,14 @@ export default function AuthPage() {
   const passwordStrength = PASSWORD_RULES.filter((r) => r.test(password)).length;
   const allPasswordRulesPass = passwordStrength === PASSWORD_RULES.length;
 
+  // Surface errors forwarded by the OAuth callback (e.g. /auth?error=auth_callback_error).
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error") === "auth_callback_error") {
+      setError("Sign-in could not be completed. Please try again.");
+    }
+  }, []);
+
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");

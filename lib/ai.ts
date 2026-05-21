@@ -1,62 +1,65 @@
 /**
- * AI: try Gemini first; on failure fall back to OpenRouter when OPENROUTER_API_KEY is set.
+ * AI router — tries configured providers in priority order (OpenAI → Gemini → OpenRouter)
+ * and falls back to the next one if a provider fails. A provider is "configured" when
+ * its API key env var is set.
  */
 
-const hasGemini = !!process.env.GEMINI_API_KEY?.trim();
-const hasOpenRouter = !!process.env.OPENROUTER_API_KEY?.trim();
+import type * as OpenAIProvider from "@/lib/openai";
 
-async function withFallback<T>(
-  geminiFn: () => Promise<T>,
-  openrouterFn: () => Promise<T>
-): Promise<T> {
-  if (hasGemini) {
+/** Shared surface every provider module must implement. */
+type AIModule = Pick<
+  typeof OpenAIProvider,
+  | "parseJobDescription"
+  | "generateBooleanSearch"
+  | "generateKnowledge"
+  | "scoreCandidate"
+  | "generateInterviewReport"
+>;
+
+const providers: { name: string; available: boolean; load: () => Promise<AIModule> }[] = [
+  { name: "OpenAI", available: !!process.env.OPENAI_API_KEY?.trim(), load: () => import("@/lib/openai") },
+  { name: "Gemini", available: !!process.env.GEMINI_API_KEY?.trim(), load: () => import("@/lib/gemini") },
+  { name: "OpenRouter", available: !!process.env.OPENROUTER_API_KEY?.trim(), load: () => import("@/lib/openrouter") },
+];
+
+async function withFallback<T>(call: (m: AIModule) => Promise<T>): Promise<T> {
+  const active = providers.filter((p) => p.available);
+  if (active.length === 0) {
+    throw new Error(
+      "No AI provider configured. Set OPENAI_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY."
+    );
+  }
+  let lastError: unknown;
+  for (const provider of active) {
     try {
-      return await geminiFn();
+      return await call(await provider.load());
     } catch (e) {
-      if (hasOpenRouter) {
-        return await openrouterFn();
-      }
-      throw e;
+      lastError = e;
+      console.error(`AI provider "${provider.name}" failed:`, e);
     }
   }
-  if (hasOpenRouter) return await openrouterFn();
-  throw new Error("Set GEMINI_API_KEY or OPENROUTER_API_KEY");
+  throw lastError instanceof Error ? lastError : new Error("All AI providers failed");
 }
 
-export async function parseJobDescription(description: string) {
-  const gemini = () => import("@/lib/gemini").then((m) => m.parseJobDescription(description));
-  const openrouter = () => import("@/lib/openrouter").then((m) => m.parseJobDescription(description));
-  return withFallback(gemini, openrouter);
+export function parseJobDescription(description: string) {
+  return withFallback((m) => m.parseJobDescription(description));
 }
 
-export async function generateBooleanSearch(role: string, hardSkills: string, experience: string) {
-  const gemini = () =>
-    import("@/lib/gemini").then((m) => m.generateBooleanSearch(role, hardSkills, experience));
-  const openrouter = () =>
-    import("@/lib/openrouter").then((m) => m.generateBooleanSearch(role, hardSkills, experience));
-  return withFallback(gemini, openrouter);
+export function generateBooleanSearch(role: string, hardSkills: string, experience: string) {
+  return withFallback((m) => m.generateBooleanSearch(role, hardSkills, experience));
 }
 
-export async function generateKnowledge(role: string, hardSkills: string) {
-  const gemini = () => import("@/lib/gemini").then((m) => m.generateKnowledge(role, hardSkills));
-  const openrouter = () =>
-    import("@/lib/openrouter").then((m) => m.generateKnowledge(role, hardSkills));
-  return withFallback(gemini, openrouter);
+export function generateKnowledge(role: string, hardSkills: string) {
+  return withFallback((m) => m.generateKnowledge(role, hardSkills));
 }
 
-export async function scoreCandidate(
+export function scoreCandidate(
   profileText: string,
   job: { role: string; experience: string; hard_skills: string; soft_skills: string }
 ) {
-  const gemini = () => import("@/lib/gemini").then((m) => m.scoreCandidate(profileText, job));
-  const openrouter = () =>
-    import("@/lib/openrouter").then((m) => m.scoreCandidate(profileText, job));
-  return withFallback(gemini, openrouter);
+  return withFallback((m) => m.scoreCandidate(profileText, job));
 }
 
-export async function generateInterviewReport(notes: string) {
-  const gemini = () => import("@/lib/gemini").then((m) => m.generateInterviewReport(notes));
-  const openrouter = () =>
-    import("@/lib/openrouter").then((m) => m.generateInterviewReport(notes));
-  return withFallback(gemini, openrouter);
+export function generateInterviewReport(notes: string) {
+  return withFallback((m) => m.generateInterviewReport(notes));
 }

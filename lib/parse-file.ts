@@ -4,7 +4,6 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_TYPES = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
-  "application/msword", // .doc (best-effort via mammoth)
 ];
 
 export class FileParseError extends Error {
@@ -35,21 +34,31 @@ export async function parseUploadedFile(file: File): Promise<string> {
 }
 
 async function parsePdf(buffer: Buffer): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
-  const result = await pdfParse(buffer);
-  const text = result.text?.trim();
-  if (!text) {
-    throw new FileParseError("Could not extract text from PDF. The file may be image-based or empty.");
+  // pdf-parse v2 exposes a PDFParse class; import dynamically so pdfjs-dist
+  // is only loaded when a PDF is actually uploaded.
+  const { PDFParse } = await import("pdf-parse");
+  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+  try {
+    const result = await parser.getText();
+    const text = result.text?.trim();
+    if (!text) {
+      throw new FileParseError(
+        "Could not extract text from PDF. The file may be image-based or empty."
+      );
+    }
+    return text;
+  } finally {
+    await parser.destroy();
   }
-  return text;
 }
 
 async function parseDocx(buffer: Buffer): Promise<string> {
   const result = await mammoth.extractRawText({ buffer });
   const text = result.value?.trim();
   if (!text) {
-    throw new FileParseError("Could not extract text from document. The file may be empty.");
+    throw new FileParseError(
+      "Could not extract text from document. The file may be empty."
+    );
   }
   return text;
 }

@@ -20,6 +20,7 @@ import {
   Upload,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { safeParseArray } from "@/lib/utils";
 
 interface Job {
   id: number;
@@ -50,6 +51,7 @@ export default function JobDetails() {
   const params = useParams();
   const id = params.id as string;
   const [job, setJob] = React.useState<Job | null>(null);
+  const [loadError, setLoadError] = React.useState(false);
   const [candidates, setCandidates] = React.useState<Candidate[]>([]);
   const [activeTab, setActiveTab] = React.useState("overview");
   const [booleanSearch, setBooleanSearch] = React.useState("");
@@ -126,11 +128,16 @@ export default function JobDetails() {
 
   React.useEffect(() => {
     fetch(`/api/jobs/${id}`)
-      .then((res) => res.json())
-      .then((data) => setJob(data));
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load job");
+        return res.json();
+      })
+      .then((data) => setJob(data))
+      .catch(() => setLoadError(true));
     fetch(`/api/jobs/${id}/candidates`)
       .then((res) => res.json())
-      .then((data) => setCandidates(Array.isArray(data) ? data : []));
+      .then((data) => setCandidates(Array.isArray(data) ? data : []))
+      .catch(() => setCandidates([]));
     // Load saved boolean search if it exists
     fetch(`/api/jobs/${id}/boolean-search`)
       .then((res) => res.ok ? res.json() : null)
@@ -146,7 +153,7 @@ export default function JobDetails() {
   const generateBooleanSearch = async () => {
     setIsGeneratingSearch(true);
     try {
-      const res = await fetch(`/api/jobs/${id}/boolean-search`);
+      const res = await fetch(`/api/jobs/${id}/boolean-search`, { method: "POST" });
       const data = await res.json();
       setBooleanSearch(data.query ?? "");
     } catch (error) {
@@ -159,7 +166,7 @@ export default function JobDetails() {
   const generateKnowledge = async () => {
     setIsGeneratingKnowledge(true);
     try {
-      const res = await fetch(`/api/jobs/${id}/knowledge`);
+      const res = await fetch(`/api/jobs/${id}/knowledge`, { method: "POST" });
       const data = await res.json();
       setKnowledge(data);
     } catch (error) {
@@ -238,6 +245,17 @@ export default function JobDetails() {
     navigator.clipboard.writeText(booleanSearch);
   };
 
+  if (loadError) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4">
+        <p className="text-neutral-500">This requisition could not be found.</p>
+        <Link href="/" className="btn-primary">
+          Back to Requisitions
+        </Link>
+      </div>
+    );
+  }
+
   if (!job) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -246,8 +264,7 @@ export default function JobDetails() {
     );
   }
 
-  const hardSkills = JSON.parse(job.hard_skills || "[]") as string[];
-  const softSkills = JSON.parse(job.soft_skills || "[]") as string[];
+  const hardSkills = safeParseArray(job.hard_skills);
 
   return (
     <motion.div

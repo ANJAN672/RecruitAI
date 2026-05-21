@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
 import { scoreCandidate } from "@/lib/ai";
 
+// AI candidate scoring on POST can take longer than the platform default.
+export const maxDuration = 60;
+
 /** Strip LinkedIn / general page noise from pasted profile text */
 function cleanProfileText(raw: string): string {
   let text = raw

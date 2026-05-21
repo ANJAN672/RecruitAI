@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
 import { parseJobDescription } from "@/lib/ai";
 
+// AI parsing on POST can take longer than the platform default.
+export const maxDuration = 60;
+
 export async function GET() {
   try {
     const supabase = await createClient();

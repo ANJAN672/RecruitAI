@@ -32,7 +32,8 @@ export default function Dashboard() {
   React.useEffect(() => {
     fetch("/api/jobs")
       .then((res) => res.json())
-      .then((data) => setJobs(Array.isArray(data) ? data : []));
+      .then((data) => setJobs(Array.isArray(data) ? data : []))
+      .catch(() => setJobs([]));
   }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,7 +62,7 @@ export default function Dashboard() {
         const data = await res.json();
         alert(data.error || "Failed to parse file.");
       }
-    } catch (error) {
+    } catch {
       alert("Failed to upload file.");
     } finally {
       setIsParsing(false);

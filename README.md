@@ -1,34 +1,30 @@
 # RecruitAI
 
-AI-powered recruitment intelligence platform that automates the hiring pipeline from JD understanding to candidate submission.
-
-## Features
-
-- **AI JD Parsing** — Paste any job description, get structured requirements in seconds
-- **Multi-Platform Boolean Search** — Auto-generated search queries for LinkedIn, Naukri, Indeed, Dice, CareerBuilder, Monster + Google X-ray
-- **AI Candidate Scoring** — Match candidates against JD requirements (0-100 score) with reasoning
-- **Bulk Profile Import** — Parse and score up to 20 candidate profiles in a single batch
-- **Behavioral Analysis** — AI-generated behavioral summary for every candidate
-- **Interview Guide** — Technical concepts explained for non-technical recruiters + interview Q&As
-- **Interview Report Generator** — Convert rough interview notes into structured evaluations
-- **Market Intelligence** — Salary benchmarks (India + US), market demand, and vetted training institutions
-- **Submission Tracker** — Pipeline tracking from Sourced to Joined with status updates
-- **Excel Export** — Download candidate data as .xlsx for client submissions
-- **Top Match Ranking** — Visual ranking with badges for top 10 candidates per job
-- **Role-Based Auth** — Separate Recruiter and Candidate dashboards with OAuth support
-- **Candidate Portal** — Candidates can log in to track their application status
+AI-powered recruiting assistant — parse job descriptions, score candidates, generate
+boolean sourcing queries and interview guides, and turn raw interview notes into
+structured reports.
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19, TailwindCSS 4, Framer Motion, React Router 7 |
-| Backend | Node.js, Express.js, TypeScript |
-| Database | Supabase (PostgreSQL with RLS) |
-| AI Engine | OpenAI GPT-4o-mini |
-| Auth | Supabase Auth (OAuth + Email/Password) |
-| Hosting | Vercel (Serverless) |
-| Build | Vite 6, TypeScript 5.8 |
+| Layer    | Technology                                            |
+| -------- | ----------------------------------------------------- |
+| Framework| Next.js 15 (App Router) + React 19 + TypeScript       |
+| Styling  | Tailwind CSS 4, Motion                                |
+| Database | Supabase (PostgreSQL + Row Level Security)            |
+| Auth     | Supabase Auth (email/password + Google/GitHub OAuth)  |
+| AI       | OpenAI / Gemini / OpenRouter (first configured wins)  |
+| Hosting  | Vercel                                                |
+
+## Features
+
+- **JD parsing** — extract role, experience, and skills from a pasted or uploaded
+  (PDF/DOCX) job description.
+- **Candidate scoring** — score a candidate profile against a job (0–100) with reasoning.
+- **Boolean sourcing** — generate a boolean search query and open LinkedIn / Naukri /
+  Google X-Ray searches.
+- **Interview guide** — AI explanations of key technical concepts plus suggested
+  interview questions.
+- **Interview reports** — convert rough interview notes into a structured report.
 
 ## Setup
 
@@ -36,7 +32,7 @@ AI-powered recruitment intelligence platform that automates the hiring pipeline 
 
 - Node.js 18+
 - A [Supabase](https://supabase.com) project
-- An [OpenAI](https://platform.openai.com) API key
+- An API key for **one** of: OpenAI, Gemini, or OpenRouter
 
 ### 1. Install dependencies
 
@@ -46,35 +42,33 @@ yarn install
 
 ### 2. Configure environment variables
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` (or `.env.local`) and fill in the values:
 
-```env
-# OpenAI
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
-
-# Supabase
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
-
-# OAuth (optional)
-GITHUB_CLIENT_ID=
-GITHUB_CLIENT_SECRET=
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-
-# App
-APP_URL=http://localhost:3000
+```bash
+cp .env.example .env
 ```
+
+You must set the Supabase variables and at least one AI provider key. See
+`.env.example` for the full list and provider priority order.
 
 ### 3. Set up the database
 
-1. Go to your Supabase project dashboard
-2. Open the **SQL Editor**
-3. Paste the contents of `supabase-schema.sql` and run it
-4. Go to **Authentication > Providers** and enable GitHub/Google OAuth if desired
-5. Add your app URL to **Authentication > URL Configuration > Redirect URLs**
+Apply the migrations in `supabase/migrations/` in filename order.
+
+**Option A — Supabase CLI**
+
+```bash
+npx supabase link --project-ref <your-project-ref>
+npx supabase db push
+```
+
+**Option B — SQL Editor**
+
+Open the Supabase dashboard → SQL Editor and run each file in
+`supabase/migrations/` in order (oldest first).
+
+Then, under **Authentication → URL Configuration**, add your app URL to the
+redirect allow-list, and enable Google/GitHub providers if you want OAuth.
 
 ### 4. Run locally
 
@@ -82,66 +76,62 @@ APP_URL=http://localhost:3000
 yarn dev
 ```
 
-The app will be available at `http://localhost:3000`.
+The app runs at `http://localhost:3000`.
 
-### 5. Deploy to Vercel
+### 5. Deploy
 
-```bash
-vercel deploy
-```
-
-Set the same environment variables in your Vercel project settings.
+Push to a Git provider and import the repo into Vercel. Next.js is detected
+automatically — no `vercel.json` is needed. Set the same environment variables
+in the Vercel project settings.
 
 ## Project Structure
 
 ```
-├── app.ts                    # Express API (all backend endpoints)
-├── server.ts                 # Development server (Vite + Express)
-├── api/index.ts              # Vercel serverless entry point
-├── supabase-schema.sql       # Complete database schema
-├── src/
-│   ├── App.tsx               # Router and app shell
-│   ├── types.ts              # TypeScript interfaces
-│   ├── lib/
-│   │   ├── supabase.ts       # Supabase client
-│   │   └── api.ts            # API helper functions
-│   ├── components/
-│   │   ├── AuthProvider.tsx   # Auth context and session management
-│   │   ├── AuthPage.tsx       # Login/signup with role selection
-│   │   ├── Navbar.tsx         # Navigation bar
-│   │   ├── SourcingTab.tsx    # Boolean search generation
-│   │   ├── MarketIntelligenceTab.tsx
-│   │   └── shared.tsx         # Reusable UI components
-│   └── pages/
-│       ├── Dashboard.tsx      # Recruiter dashboard (job listing)
-│       ├── JobDetails.tsx     # Job details with all tabs
-│       ├── CandidateDetails.tsx
-│       └── CandidatePortal.tsx # Candidate self-service portal
-├── vercel.json               # Vercel deployment config
-└── package.json
+app/
+  layout.tsx              # Root layout + nav + AuthProvider
+  page.tsx                # Dashboard (requisitions list)
+  error.tsx, not-found.tsx
+  auth/
+    page.tsx              # Sign in / sign up
+    callback/route.ts     # OAuth code exchange
+  jobs/[id]/page.tsx      # Job detail (overview, candidates, sourcing, guide)
+  candidates/[id]/page.tsx# Candidate detail + interview reports
+  api/                    # Route handlers (see below)
+lib/
+  ai.ts                   # Provider router (OpenAI → Gemini → OpenRouter)
+  openai.ts, gemini.ts, openrouter.ts
+  parse-file.ts           # PDF/DOCX text extraction
+  supabase-*.ts           # Browser / server / middleware Supabase clients
+  auth-context.tsx, nav-user.tsx, utils.ts
+middleware.ts             # Session refresh + route protection
+supabase/migrations/      # Database schema
 ```
 
-## API Endpoints
+## API Routes
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/config` | OAuth provider availability |
-| POST | `/api/profile` | Create/update user profile |
-| POST | `/api/jobs` | Create job with AI parsing |
-| GET | `/api/jobs` | List jobs with candidate counts |
-| GET | `/api/jobs/:id` | Get job details |
-| GET/POST | `/api/jobs/:id/boolean-search` | Boolean search queries |
-| GET/POST | `/api/jobs/:id/knowledge` | Interview guide |
-| POST | `/api/jobs/:id/candidates` | Ingest and score candidate |
-| GET | `/api/jobs/:id/candidates` | List candidates (ranked) |
-| GET | `/api/jobs/:id/candidates/export` | Excel download |
-| GET/POST | `/api/jobs/:id/submissions` | Submission tracker |
-| GET | `/api/candidates/:id` | Candidate details |
-| POST | `/api/candidates/:id/report` | Generate interview report |
-| GET | `/api/candidates/:id/reports` | List reports |
-| GET/POST | `/api/candidates/:id/notes` | Recruiter notes |
-| GET/POST | `/api/jobs/:id/market-intelligence` | Market data |
-| GET | `/api/candidate-portal/applications` | Candidate self-service |
+| Method   | Route                              | Description                          |
+| -------- | ---------------------------------- | ------------------------------------ |
+| GET/POST | `/api/jobs`                        | List jobs / create job (AI parse)    |
+| GET      | `/api/jobs/[id]`                   | Get a job                            |
+| GET/POST | `/api/jobs/[id]/candidates`        | List candidates / ingest + score one |
+| GET/POST | `/api/jobs/[id]/boolean-search`    | Read saved query / generate one      |
+| GET/POST | `/api/jobs/[id]/knowledge`         | Read saved guide / generate one      |
+| GET      | `/api/candidates/[id]`             | Get a candidate                      |
+| POST     | `/api/candidates/[id]/report`      | Generate an interview report         |
+| GET      | `/api/candidates/[id]/reports`     | List interview reports               |
+| POST     | `/api/upload/parse`                | Extract text from an uploaded file   |
+| GET      | `/api/models`                      | List available Gemini models         |
+
+All `/api` routes require an authenticated session and return `401` otherwise.
+
+## Scripts
+
+| Command       | Description                          |
+| ------------- | ------------------------------------ |
+| `yarn dev`    | Start the dev server                 |
+| `yarn build`  | Production build                     |
+| `yarn start`  | Serve the production build           |
+| `yarn lint`   | Run ESLint                           |
 
 ## License
 

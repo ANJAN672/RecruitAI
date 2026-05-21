@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
 import { parseUploadedFile, FileParseError } from "@/lib/parse-file";
 
+// pdf-parse / mammoth need the Node.js runtime; parsing large files can be slow.
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();

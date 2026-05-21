@@ -1,12 +1,37 @@
+# dependencies
 node_modules/
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+
+# next.js
+.next/
+out/
+
+# production
 build/
 dist/
-coverage/
+
+# misc
 .DS_Store
 *.log
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+
+# local env files
 .env*
 !.env.example
-.next
+
+# supabase
+/supabase/.temp/
+
+# editors
 .vscode/
 .idea/
-.claude
+
+# claude code (contains local settings; never commit)
+.claude/

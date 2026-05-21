@@ -11,6 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
+import { safeParseArray } from "@/lib/utils";
 
 interface Candidate {
   id: number;
@@ -40,17 +41,23 @@ export default function CandidateDetails() {
   const params = useParams();
   const id = params.id as string;
   const [candidate, setCandidate] = React.useState<Candidate | null>(null);
+  const [loadError, setLoadError] = React.useState(false);
   const [reports, setReports] = React.useState<InterviewReport[]>([]);
   const [isGeneratingReport, setIsGeneratingReport] = React.useState(false);
   const [interviewNotes, setInterviewNotes] = React.useState("");
 
   React.useEffect(() => {
     fetch(`/api/candidates/${id}`)
-      .then((res) => res.json())
-      .then((data) => setCandidate(data));
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load candidate");
+        return res.json();
+      })
+      .then((data) => setCandidate(data))
+      .catch(() => setLoadError(true));
     fetch(`/api/candidates/${id}/reports`)
       .then((res) => res.json())
-      .then((data) => setReports(Array.isArray(data) ? data : []));
+      .then((data) => setReports(Array.isArray(data) ? data : []))
+      .catch(() => setReports([]));
   }, [id]);
 
   const handleGenerateReport = async (e: React.FormEvent) => {
@@ -74,6 +81,17 @@ export default function CandidateDetails() {
     }
   };
 
+  if (loadError) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4">
+        <p className="text-neutral-500">This candidate could not be found.</p>
+        <Link href="/" className="btn-primary">
+          Back to Requisitions
+        </Link>
+      </div>
+    );
+  }
+
   if (!candidate) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -82,7 +100,7 @@ export default function CandidateDetails() {
     );
   }
 
-  const skills = JSON.parse(candidate.skills || "[]") as string[];
+  const skills = safeParseArray(candidate.skills);
 
   return (
     <motion.div

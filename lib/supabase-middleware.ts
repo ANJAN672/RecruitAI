@@ -34,8 +34,11 @@ export async function updateSession(request: NextRequest) {
   const isPublicPath = publicPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   );
+  // API routes do their own auth check and return a 401 JSON response —
+  // never redirect them, or fetch() callers receive an HTML login page.
+  const isApiPath = request.nextUrl.pathname.startsWith("/api");
 
-  if (!user && !isPublicPath) {
+  if (!user && !isPublicPath && !isApiPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth";
     return NextResponse.redirect(url);

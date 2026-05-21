@@ -44,6 +44,20 @@ CREATE TABLE IF NOT EXISTS candidate_submissions (
 ALTER TABLE candidate_submissions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users manage own submissions" ON candidate_submissions FOR ALL USING (auth.uid() = user_id);
 
+-- ── Market Intelligence ───────────────────────────────────────────────
+-- Referenced by the index and RLS policy below; must be created here or
+-- the migration fails on a fresh database.
+CREATE TABLE IF NOT EXISTS market_intelligence (
+  id BIGSERIAL PRIMARY KEY,
+  job_id BIGINT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(job_id, user_id)
+);
+
+ALTER TABLE market_intelligence ENABLE ROW LEVEL SECURITY;
+
 -- ── Indexes ───────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_submissions_job ON candidate_submissions(job_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_candidate ON candidate_submissions(candidate_id);
