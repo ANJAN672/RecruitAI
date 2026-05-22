@@ -111,3 +111,12 @@ body {
 
 .line-clamp-1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Indeterminate progress bar — slides a short fill across the track */
+@keyframes progress-indeterminate {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(420%); }
+}
+.animate-progress {
+  animation: progress-indeterminate 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}

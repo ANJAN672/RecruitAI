@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Briefcase, Plus, XCircle, Loader2, Clock, Upload } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import useSWR from "swr";
+import { SectionLoader } from "@/lib/section-loader";
 
 interface Job {
   id: number;
@@ -19,7 +21,9 @@ interface Job {
 }
 
 export default function Dashboard() {
-  const [jobs, setJobs] = React.useState<Job[]>([]);
+  const { data: jobsData, isLoading: jobsLoading, mutate: mutateJobs } =
+    useSWR<Job[]>("/api/jobs");
+  const jobs = Array.isArray(jobsData) ? jobsData : [];
   const [isCreating, setIsCreating] = React.useState(false);
   const [newJobTitle, setNewJobTitle] = React.useState("");
   const [newJobDesc, setNewJobDesc] = React.useState("");
@@ -28,13 +32,6 @@ export default function Dashboard() {
   const [isParsing, setIsParsing] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const router = useRouter();
-
-  React.useEffect(() => {
-    fetch("/api/jobs")
-      .then((res) => res.json())
-      .then((data) => setJobs(Array.isArray(data) ? data : []))
-      .catch(() => setJobs([]));
-  }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -80,7 +77,7 @@ export default function Dashboard() {
       });
       if (res.ok) {
         const newJob = await res.json();
-        setJobs([newJob, ...jobs]);
+        mutateJobs((current) => [newJob, ...(current ?? [])], { revalidate: false });
         setIsCreating(false);
         setNewJobTitle("");
         setNewJobDesc("");
@@ -200,7 +197,12 @@ export default function Dashboard() {
       </AnimatePresence>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {jobs.length === 0 && !isCreating && (
+        {jobsLoading && (
+          <div className="col-span-full">
+            <SectionLoader label="Loading requisitions…" />
+          </div>
+        )}
+        {!jobsLoading && jobs.length === 0 && !isCreating && (
           <div className="col-span-full py-20 text-center text-neutral-400 border-2 border-dashed border-neutral-200 rounded-3xl">
             <Briefcase className="mx-auto h-12 w-12 mb-4 opacity-20" />
             <p>No requisitions created yet. Click &quot;New Requisition&quot; to get started.</p>

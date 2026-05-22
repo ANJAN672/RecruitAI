@@ -20,7 +20,9 @@ import {
   Upload,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import useSWR from "swr";
 import { safeParseArray } from "@/lib/utils";
+import { SectionLoader } from "@/lib/section-loader";
 
 interface Job {
   id: number;
@@ -47,18 +49,33 @@ interface Candidate {
   created_at: string;
 }
 
+interface KnowledgeGuide {
+  concepts?: { name: string; explanation: string }[];
+  interview_questions?: { question: string; expected_answer: string }[];
+}
+
 export default function JobDetails() {
   const params = useParams();
   const id = params.id as string;
-  const [job, setJob] = React.useState<Job | null>(null);
-  const [loadError, setLoadError] = React.useState(false);
-  const [candidates, setCandidates] = React.useState<Candidate[]>([]);
+
+  const { data: job, error: jobError } = useSWR<Job>(`/api/jobs/${id}`);
+  const { data: candidatesData, isLoading: candidatesLoading, mutate: mutateCandidates } =
+    useSWR<Candidate[]>(`/api/jobs/${id}/candidates`);
+  const { data: booleanData, isLoading: booleanLoading, mutate: mutateBoolean } =
+    useSWR<{ query: string | null }>(`/api/jobs/${id}/boolean-search`);
+  const { data: knowledgeData, isLoading: knowledgeLoading, mutate: mutateKnowledge } =
+    useSWR<KnowledgeGuide>(`/api/jobs/${id}/knowledge`);
+
+  const candidates = Array.isArray(candidatesData) ? candidatesData : [];
+  const booleanSearch = booleanData?.query ?? "";
+  const knowledge =
+    knowledgeData &&
+    ((knowledgeData.concepts?.length ?? 0) > 0 ||
+      (knowledgeData.interview_questions?.length ?? 0) > 0)
+      ? knowledgeData
+      : null;
+
   const [activeTab, setActiveTab] = React.useState("overview");
-  const [booleanSearch, setBooleanSearch] = React.useState("");
-  const [knowledge, setKnowledge] = React.useState<{
-    concepts?: { name: string; explanation: string }[];
-    interview_questions?: { question: string; expected_answer: string }[];
-  } | null>(null);
   const [isGeneratingSearch, setIsGeneratingSearch] = React.useState(false);
   const [isGeneratingKnowledge, setIsGeneratingKnowledge] = React.useState(false);
 
@@ -126,36 +143,13 @@ export default function JobDetails() {
     }
   };
 
-  React.useEffect(() => {
-    fetch(`/api/jobs/${id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load job");
-        return res.json();
-      })
-      .then((data) => setJob(data))
-      .catch(() => setLoadError(true));
-    fetch(`/api/jobs/${id}/candidates`)
-      .then((res) => res.json())
-      .then((data) => setCandidates(Array.isArray(data) ? data : []))
-      .catch(() => setCandidates([]));
-    // Load saved boolean search if it exists
-    fetch(`/api/jobs/${id}/boolean-search`)
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data?.query) setBooleanSearch(data.query); })
-      .catch(() => {});
-    // Load saved knowledge guide if it exists
-    fetch(`/api/jobs/${id}/knowledge`)
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data?.concepts || data?.interview_questions) setKnowledge(data); })
-      .catch(() => {});
-  }, [id]);
-
   const generateBooleanSearch = async () => {
     setIsGeneratingSearch(true);
     try {
       const res = await fetch(`/api/jobs/${id}/boolean-search`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to generate boolean search");
       const data = await res.json();
-      setBooleanSearch(data.query ?? "");
+      mutateBoolean({ query: data.query ?? "" }, { revalidate: false });
     } catch (error) {
       console.error("Failed to generate boolean search", error);
     } finally {
@@ -167,8 +161,9 @@ export default function JobDetails() {
     setIsGeneratingKnowledge(true);
     try {
       const res = await fetch(`/api/jobs/${id}/knowledge`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to generate knowledge");
       const data = await res.json();
-      setKnowledge(data);
+      mutateKnowledge(data, { revalidate: false });
     } catch (error) {
       console.error("Failed to generate knowledge", error);
     } finally {
@@ -191,8 +186,12 @@ export default function JobDetails() {
       });
       if (res.ok) {
         const newCandidate = await res.json();
-        setCandidates(
-          [newCandidate, ...candidates].sort((a, b) => (b.match_score ?? 0) - (a.match_score ?? 0))
+        mutateCandidates(
+          (current) =>
+            [newCandidate, ...(current ?? [])].sort(
+              (a, b) => (b.match_score ?? 0) - (a.match_score ?? 0)
+            ),
+          { revalidate: false }
         );
         setIsAddingCandidate(false);
         setCandidateName("");
@@ -245,7 +244,7 @@ export default function JobDetails() {
     navigator.clipboard.writeText(booleanSearch);
   };
 
-  if (loadError) {
+  if (jobError) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4">
         <p className="text-neutral-500">This requisition could not be found.</p>
@@ -259,7 +258,7 @@ export default function JobDetails() {
   if (!job) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-neutral-400" />
+        <SectionLoader label="Loading requisition…" className="" />
       </div>
     );
   }
@@ -461,7 +460,10 @@ export default function JobDetails() {
               </AnimatePresence>
 
               <div className="grid gap-4">
-                {candidates.length === 0 && (
+                {candidatesLoading && candidates.length === 0 && (
+                  <SectionLoader label="Loading candidates…" />
+                )}
+                {!candidatesLoading && candidates.length === 0 && (
                   <div className="py-16 text-center text-neutral-400 border-2 border-dashed border-neutral-200 rounded-3xl">
                     <Users className="mx-auto h-10 w-10 mb-3 opacity-20" />
                     <p>No candidates added yet.</p>
@@ -522,7 +524,7 @@ export default function JobDetails() {
                 </div>
                 <button
                   onClick={generateBooleanSearch}
-                  disabled={isGeneratingSearch}
+                  disabled={isGeneratingSearch || booleanLoading}
                   className="btn-primary"
                 >
                   {isGeneratingSearch ? (
@@ -534,7 +536,9 @@ export default function JobDetails() {
                 </button>
               </div>
 
-              {booleanSearch ? (
+              {booleanLoading && !booleanSearch ? (
+                <SectionLoader label="Loading saved query…" />
+              ) : booleanSearch ? (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -600,7 +604,7 @@ export default function JobDetails() {
                   <h4 className="text-xl font-medium text-neutral-900">Knowledge Assistant</h4>
                   <p className="text-sm text-neutral-500 mt-1">Understand technical concepts and get interview questions.</p>
                 </div>
-                {!knowledge && (
+                {!knowledge && !knowledgeLoading && (
                   <button
                     onClick={generateKnowledge}
                     disabled={isGeneratingKnowledge}
@@ -616,7 +620,9 @@ export default function JobDetails() {
                 )}
               </div>
 
-              {knowledge ? (
+              {knowledgeLoading && !knowledge ? (
+                <SectionLoader label="Loading guide…" />
+              ) : knowledge ? (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-10">
                   <div>
                     <h5 className="text-lg font-medium text-neutral-900 mb-6 flex items-center">

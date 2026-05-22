@@ -11,7 +11,9 @@ import {
   XCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
+import useSWR from "swr";
 import { safeParseArray } from "@/lib/utils";
+import { SectionLoader } from "@/lib/section-loader";
 
 interface Candidate {
   id: number;
@@ -40,25 +42,15 @@ interface InterviewReport {
 export default function CandidateDetails() {
   const params = useParams();
   const id = params.id as string;
-  const [candidate, setCandidate] = React.useState<Candidate | null>(null);
-  const [loadError, setLoadError] = React.useState(false);
-  const [reports, setReports] = React.useState<InterviewReport[]>([]);
+
+  const { data: candidate, error: candidateError } =
+    useSWR<Candidate>(`/api/candidates/${id}`);
+  const { data: reportsData, isLoading: reportsLoading, mutate: mutateReports } =
+    useSWR<InterviewReport[]>(`/api/candidates/${id}/reports`);
+  const reports = Array.isArray(reportsData) ? reportsData : [];
+
   const [isGeneratingReport, setIsGeneratingReport] = React.useState(false);
   const [interviewNotes, setInterviewNotes] = React.useState("");
-
-  React.useEffect(() => {
-    fetch(`/api/candidates/${id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load candidate");
-        return res.json();
-      })
-      .then((data) => setCandidate(data))
-      .catch(() => setLoadError(true));
-    fetch(`/api/candidates/${id}/reports`)
-      .then((res) => res.json())
-      .then((data) => setReports(Array.isArray(data) ? data : []))
-      .catch(() => setReports([]));
-  }, [id]);
 
   const handleGenerateReport = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,7 +63,7 @@ export default function CandidateDetails() {
       });
       if (res.ok) {
         const newReport = await res.json();
-        setReports([newReport, ...reports]);
+        mutateReports((current) => [newReport, ...(current ?? [])], { revalidate: false });
         setInterviewNotes("");
       }
     } catch (error) {
@@ -81,7 +73,7 @@ export default function CandidateDetails() {
     }
   };
 
-  if (loadError) {
+  if (candidateError) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4">
         <p className="text-neutral-500">This candidate could not be found.</p>
@@ -95,7 +87,7 @@ export default function CandidateDetails() {
   if (!candidate) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-neutral-400" />
+        <SectionLoader label="Loading candidate…" className="" />
       </div>
     );
   }
@@ -202,7 +194,9 @@ export default function CandidateDetails() {
 
         <div className="space-y-6">
           <h4 className="text-xl font-medium text-neutral-900 mb-6">Past Interview Reports</h4>
-          {reports.length === 0 ? (
+          {reportsLoading && reports.length === 0 ? (
+            <SectionLoader label="Loading reports…" />
+          ) : reports.length === 0 ? (
             <div className="py-16 text-center text-neutral-400 border-2 border-dashed border-neutral-200 rounded-3xl">
               <FileText className="mx-auto h-8 w-8 mb-3 opacity-20" />
               <p className="text-sm">No interview reports generated yet.</p>

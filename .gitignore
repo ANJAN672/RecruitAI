@@ -29,6 +29,9 @@ coverage/
 # supabase
 /supabase/.temp/
 
+# vercel
+.vercel
+
 # editors
 .vscode/
 .idea/
